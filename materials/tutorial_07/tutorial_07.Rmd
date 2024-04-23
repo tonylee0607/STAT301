@@ -1,0 +1,593 @@
+---
+jupyter:
+  jupytext:
+    formats: ipynb,Rmd
+    text_representation:
+      extension: .Rmd
+      format_name: rmarkdown
+      format_version: '1.2'
+      jupytext_version: 1.16.0
+  kernelspec:
+    display_name: R
+    language: R
+    name: ir
+---
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "04ce4b2a70add7b1b34c1dc9b8329326", "grade": false, "grade_id": "cell-f1e1d845873036f4", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+# Tutorial 7: Model Evaluation and Model Selection
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "90c5778757b86e6aa2177ebfaab7f614", "grade": false, "grade_id": "cell-82d9926086d47a80", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+#### Lecture and Tutorial Learning Goals:
+After completing this week's lecture and tutorial work, you will be able to:
+
+1. List model metrics that are suitable for evaluation of a statistical model developed to make inference about the data-generating mechanism (e.g., $R^2$, $\text{AIC}$, Likelihood ratio test/$F$-test), their strengths and limitations, as well as how they are calculated.
+2. Write a computer script to calculate these model metrics. Interpret and communicate the results from that computer script.
+3. Explain a variable selection method based on:
+    - $F$-test to compare nested models.
+    - RSS for models of equal size
+    - Adjusted $R^2$ for models of different sizes
+<!-- #endregion -->
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '049f5b181c8cba658955ed573f8c4c58', 'grade': False, 'grade_id': 'cell-a2a153352bc44a68', 'locked': True, 'schema_version': 3, 'solution': False, 'task': False}}
+# Run this cell before continuing.
+library(tidyverse)
+library(repr)
+library(digest)
+library(infer)
+library(gridExtra)
+library(faraway)
+library(broom)
+library(leaps)
+library(mltools)
+source("tests_tutorial_07.R")
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "e75543fba6e00d97b98b3fffa5f2c09f", "grade": false, "grade_id": "cell-93ac8765d809417c", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+## Can we predict protein from mRNA?
+
+In worksheet_07 you studied the significance of `mrna` and analyzed the goodness-of-fit of some models. However, there are other models that can be compared. For example, are interactions terms needed or is it equivalent to consider an additive model? 
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "76c9c8ad5318480e67f9d80f4ae641ba", "grade": false, "grade_id": "cell-58724295b3683c74", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+Consider the following models using a dataset with 3 randomly selected genes:
+
+- model.1: $\text{prot}_t=\beta_0 + \varepsilon_t$ 
+
+- model.2:  $\text{prot}_t=\beta_0 + \beta_1 \text{mrna}_{t} + \varepsilon_t$ 
+
+- model.3:  $\text{prot}_t=\beta_0 + \beta_2 \text{gene2}_{t} + \beta_3 \text{gene3}_{t} + \varepsilon_t$ 
+
+- model.4:  $\text{prot}_t=\beta_0 + \beta_1 \text{mrna}_{t} + \beta_2 \text{gene2}_{t} + \beta_3 \text{gene3}_{t} + \varepsilon_t$ 
+
+- model.5:  $\text{prot}_t=\beta_0 + \beta_1 \text{mrna}_{t} + \beta_2 \text{gene2}_{t} + \beta_3 \text{gene3}_{t} + \beta_4 \text{gene2}_{t}\text{mrna}_{t} + \beta_5 \text{gene3}_{t}\text{mrna}_{t} + \varepsilon_t$ 
+<!-- #endregion -->
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '670a8b9ab5427255445e5543e0daf4df', 'grade': False, 'grade_id': 'cell-616b8ab2f1452495', 'locked': True, 'schema_version': 3, 'solution': False, 'task': False}}
+# Read and take a look at the data.
+dat_bio <- read.csv("data/nature_dat.csv", row.names = 1, stringsAsFactors=TRUE)
+str(dat_bio)
+head(dat_bio,3)
+tail(dat_bio,3)
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'fd6ba13bf520cc907cda42e60d0cc87e', 'grade': False, 'grade_id': 'cell-e4e36c63c003122c', 'locked': True, 'schema_version': 3, 'solution': False, 'task': False}}
+#run this cell
+set.seed(561)
+dat_3genes <- dat_bio  %>%  
+         subset(gene %in% sample(gene,3)) 
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "d7826afed0a12b6b00a85c3e9c1d1b6c", "grade": false, "grade_id": "cell-6c722e3a372a3114", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.0**
+<br>{points: 1}
+
+Test if the model with interaction terms (`model.5`) is significantly different from an additive one (`model.4`). Note that both models have `mrna` but the full model assumes that the change in protein levels per unit change in mRNA levels is different for each gene.
+
+Store your results in an object called `Ftest_3genes_add_full`.
+
+*Write your own code and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'e4f65db77490141a616c042ae8dd4d5c', 'grade': False, 'grade_id': 'cell-2d5e8281caac870d', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+#[write your code here]
+#Ftest_3genes_add_full
+
+# your code here
+
+model_4 <- lm(prot ~ mrna + gene ,data = dat_3genes)
+
+model_5 <- lm(prot ~ mrna * gene, data = dat_3genes)
+
+Ftest_3genes_add_full <- anova(model_4, model_5)
+Ftest_3genes_add_full
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'f1fb11b3274586f0b9d7d887c5c73bb8', 'grade': True, 'grade_id': 'cell-9520504e5a91abed', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_1.0()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "43a49f718713b9a7c2c49408b89c68af", "grade": false, "grade_id": "cell-633de4d02e393e13", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.1**
+<br>{points: 1}
+
+Using a significance level $\alpha = 0.05$ and the results in `Ftest_3genes_add_full`, in plain words, what is the conclusion from the results of the test run in **Question 1.0**?
+
+**A.** We reject the null hypothesis; thus, the *full* model is significatly better than the *reduced* model.
+
+**B.** We fail to reject the null hypothesis; thus, there is not enough evidence that the *full* model with additional interaction terms is better than the additive (reduced) model.
+
+**C.** We accept the alternative hypothesis; thus, the *full* model is significantly better than the *reduced* model.
+
+**D.** We do not accept the alternative hypothesis; thus, the *full* model with additional interaction terms is not better than the *reduced* model.
+
+*Assign your answer to an object called `answer1.1`. Your answer should be one of `"A"`, `"B"`, `"C"`, or `"D"` surrounded by quotes.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'c654b0916955f810231633dfe148c244', 'grade': False, 'grade_id': 'cell-672ea5acf3fcd97f', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# answer1.1 <- 
+
+# your code here
+answer1.1 <- "B"
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '811ec81626a1926884a1ae32ec0524ce', 'grade': True, 'grade_id': 'cell-f510cd4a1479fd83', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_1.1()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "80f37c7b193be99f1e6e0e2b6e3d619d", "grade": false, "grade_id": "cell-73ad156d14319434", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+#### Assessing mRNA in the additive model
+
+As a final test, let's examine the significance of `mrna` in the additive model.
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "c01f6dded74091da16a61fbeb0d5633f", "grade": false, "grade_id": "cell-95e74ec3f56b4208", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.2**
+<br>{points: 2}
+
+Compare the additive model with mRNA as an input and distinct intercepts per gene  (`model.4`) with a model without `mrna` and only the categorical variable `gene` as input variable (`model.3`). Note that the second model predicts protein levels with the average protein level within each gene!!
+
+Use the function `tidy()` to obtain a summary of the additive model. Include the corresponding asymptotic 90% confidence intervals. Store the results in an object called `add_mrna_results`.
+
+Use the function `anova()` to compare these models and store the results in an object called `Ftest_3genes_add_mrna`.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '1f1ed5b3084ea542d7c91d7e7a1ed206', 'grade': False, 'grade_id': 'cell-620823d0f6deab4f', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+#[write your code here]
+
+#add_mrna_results <- ...
+#Ftest_3genes_add_mrna <- ...
+
+# your code here
+full_model <- lm(prot ~ mrna + gene ,data = dat_3genes)
+red_model <- lm(prot ~ gene ,data = dat_3genes)
+
+add_mrna_results <- tidy(full_model, conf.int = TRUE, conf.level = 0.90)
+add_mrna_results
+
+Ftest_3genes_add_mrna <- anova(full_model, red_model)
+Ftest_3genes_add_mrna                               
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '2700f1df14ee1375ee05dd2f6f323e26', 'grade': True, 'grade_id': 'cell-9b6acf3241aeeb8e', 'locked': True, 'points': 2, 'schema_version': 3, 'solution': False, 'task': False}}
+test_1.2.0()
+test_1.2.1()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "eab9d791c2502a60fcec95ab41a6e6e1", "grade": false, "grade_id": "cell-2278371543391218", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.3**
+<br>{points: 2}
+
+Compare the $p$-value for `mrna` in `add_mrna_results` with that reported in `Ftest_3genes_add_mrna`. What do you observe? Indicate the null hypotheses tested in each case and explain the results.
+<!-- #endregion -->
+
+<!-- #region deletable=false nbgrader={"cell_type": "markdown", "checksum": "f0f24c741ebf551d2ce4b09f3b6a0e1f", "grade": true, "grade_id": "cell-46d78ce68383a2a1", "locked": false, "points": 2, "schema_version": 3, "solution": true, "task": false} -->
+> *Your explanation of the results goes here.*
+
+The p-value for mRNA in the "add_mrna_results" is 0.1545649197, which is the same as the p-value that is reported in the "Ftest_3genes_add_mrna" for comparing the models, which is 0.1545649. These p-values indicate that mRNA variable does not significantly improve the fit of model 4. Since the p-value is greater than 0.10 and a significance level of 0.10, I can interpret that this mRNA variable not being a statistically significant predictor.
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "0253b0195de4d848fa6f63bb98de0d1a", "grade": false, "grade_id": "cell-c096bd3acbd91392", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.4**
+<br>{points: 1}
+
+Using a **significance level $\alpha = 0.10$** and the results in `add_mrna_results`, which of the following claims is correct? 
+
+**A.** The `model.4` that includes `mrna` is significatly different from `model.3`.
+
+**B.** There is not enough evidence that the `model.4` that includes `mrna` as a predictor is significatly better than `model.3`.
+
+**C.** The `model.4` that includes `mrna` as a predictor is equivalent to `model.3` since the coefficient for `mrna` is not significantly different from zero.
+
+**D.** The variable `mrna` is essencial to predict protein levels.
+
+*Assign your answer to an object called `answer1.4`. Your answer should be one of `"A"`, `"B"`, `"C"`, or `"D"` surrounded by quotes.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'f923f45f08e4b5253c508a2fbf301563', 'grade': False, 'grade_id': 'cell-526e7a36d70d7656', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# answer1.4 <- 
+
+# your code here
+answer1.4 <- "B"
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'a19dd2e3dcbac430d9aa8d65e9044296', 'grade': True, 'grade_id': 'cell-eaee9f2280c396a0', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_1.4()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "e2766e39287ee322f07995a4504db3f0", "grade": false, "grade_id": "cell-1aacaa45a46be49a", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.5**
+<br>{points: 4}
+
+a) We can use the adjusted $R^2$ to compare the goodness-of-fit of `model.5` and `model.4` to conclude which one fits the data better. Use the function `glance()` to obtain these values and discuss the results obtained. 
+
+b) Compare the $R^2$ for both models and explain why that of `model.5` is larger.
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '798c513b8a42b7ab0cc50bfead4cb95f', 'grade': False, 'grade_id': 'cell-8949d93baadc071a', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# Your code and numerical results go here. We will grade this cell manually
+
+# your code here
+# Part A
+model.4 <- glance(model_4)
+model.5 <- glance(model_5)
+
+model.4
+model.5
+
+# Part B
+
+adjusted_r_squared_model_4 <- glance(model_4)$r.squared
+adjusted_r_squared_model_5 <- glance(model_5)$r.squared
+
+adjusted_r_squared_model_4
+adjusted_r_squared_model_5
+```
+
+<!-- #region deletable=false nbgrader={"cell_type": "markdown", "checksum": "0959dcbbe4b562e5053fff0e9504dfd1", "grade": true, "grade_id": "cell-f810ee382faddccf", "locked": false, "points": 4, "schema_version": 3, "solution": true, "task": false} -->
+> *Your explanation of the results goes here.*
+
+Model 5 has a higher $R^2$ value compared to Model 4, which could be attributed to the inclusion of interaction terms between categorical variable of gene(especially 2 and 3) and mRNA. These interaction terms might be capturing additional variance in the protein levels. Therefore model 5 has more higher $R^2$ than model 4.
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "e14d0a248c46554caf6cdd33a4274afc", "grade": false, "grade_id": "cell-780f1094bba1bb0f", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+# 2. Model selection
+
+In this section you will use the **backward selection** algorithm to construct a generative model. 
+
+> Note that the choice of which algorithm to use in each case was arbitrary and you can play with these algorithms and try other choices!
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "23c54e57b3d4bd9e3eee868770609def", "grade": false, "grade_id": "cell-5db1ec8ab7f6c357", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+Let us start by loading the dataset to be used throughout this tutorial. We will use the dataset `fat` from the library `faraway`. You can find detailed information about it in [Johnson (1996)](https://www.tandfonline.com/doi/full/10.1080/10691898.1996.11910505). This dataset contains the percentage of body fat and a whole variety of body measurements (continuous variables) of 252 men. We will use the variable `brozek` as the response variable and a subset 14 variables to build different models. 
+
+The response variable `brozek` is the percent of body fat using Brozek's equation:
+
+$$\texttt{brozek} = \frac{457}{\texttt{density}} - 414.2,$$
+
+where body `density` is measured in $\text{g}/\text{cm}^3$.
+
+The 14 input variables are:
+
+- `age`: Age in $\text{years}$.
+- `weight`: Weight in $\text{lb}$.
+- `height`: Height in $\text{in}$.
+- `adipos`: Adiposity index in $\text{kg}/\text{m}^2$.
+
+$$\texttt{adipos} = \frac{\texttt{weight}}{\texttt{height}^2}$$
+
+- `neck`: Neck circumference in $\text{cm}$.
+- `chest`: Chest circumference in $\text{cm}$.
+- `abdom`: Abdomen circumference at the umbilicus and level with the iliac crest in $\text{cm}$.
+- `hip`: Hip circumference in $\text{cm}$.
+- `thigh`: Thigh circumference in $\text{cm}$.
+- `knee`: Knee circumference in $\text{cm}$.
+- `ankle`: Ankle circumference in $\text{cm}$.
+- `biceps`: Extended biceps circumference in $\text{cm}$.
+- `forearm`: Forearm circumference in $\text{cm}$.
+- `wrist`: Wrist circumference distal to the styloid processes in $\text{cm}$.
+
+Run the code below to create the working data frame called `fat_sample`.
+<!-- #endregion -->
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '7565e74c203a8b63c5e873aec7837799', 'grade': False, 'grade_id': 'cell-03998f31dc8342ba', 'locked': True, 'schema_version': 3, 'solution': False, 'task': False}}
+# run this cell
+
+fat_sample <- fat %>%
+  select(
+    brozek, age, weight, height, adipos, neck, chest, abdom,
+    hip, thigh, knee, ankle, biceps, forearm, wrist
+  )
+
+head(fat_sample,3)
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "0ff3785d791913bc000a680e1f41a971", "grade": false, "grade_id": "cell-5dcb4d940b3e62e9", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+### Selecting a generative model
+
+Although many potential input variables are available in the dataset, not all may be relevant to explain the variation of the response variable. The *subset* algorithms learned in the lecture can be used to select a subset of variable to build generative models. 
+
+Generative models are built and trained to examine the association between the response and the input variables. 
+
+Since the same data can not be used to select and to make inference, we need 2 different datasets: a *selection* set and a *training* set. If two independent datasets are not available to select and build a generative model, we can use the data in hand and split it to create these datasets. 
+
+> using the same data to select and estimate violates the assumptions of the analysis and invalidate inference results. This problem is known as a *post-inference* problem and will be further discuss in future lectures. 
+
+In the following questions, we will use the *backward* selection algorithm and the *adjusted* $R^2$ to select a smaller model. 
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "d97be6b08f10914bbc8b5c1a98910052", "grade": false, "grade_id": "cell-36a56e9d55bdb89f", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.0**
+<br>{points: 1}
+
+Let's start by randomly splitting `fat_sample` in two sets on a 70-30% basis: `training_fat` (70% of the data) and `second_set_fat` (the remaining 30%). The selection will be done using the `second_set_fat` dataset and the model will be built using the `training_fat` data.
+
+Follow the next 3 steps to complete the code below:
+
+1. Create an `ID` column in `fat_sample` (i.e., `fat_sample$ID`) with the row number corresponding to each man in the sample.
+
+2. Use the function `sample_n()` to create `training_fat` (sampling *without* replacement) with 70\% of the observations coming from `fat_sample`.
+
+3. Use `anti_join()` with `fat_sample` and `training_fat` to create `second_set_fat` by column `ID`.
+
+4. Remove the variable `ID` used to split the data
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '5f31f55c1e2cdbc6b3e88c57fdb3857e', 'grade': False, 'grade_id': 'cell-88095657b7ef5e0d', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+set.seed(123) # DO NOT CHANGE!
+
+# fat_sample$ID <- rownames(fat_sample)
+# training_fat <- ...(..., size = nrow(fat_sample) * 0.70,
+#   replace = ...
+# )
+
+# second_set_fat <- anti_join(...,
+#   ...,
+#   by = ...
+# )
+
+# training_fat <- training_fat  %>% select(-"ID")
+# second_set_fat <- second_set_fat %>% select(-"ID")
+
+# head(training_fat)
+# nrow(training_fat)
+
+# head(second_set_fat)
+# nrow(second_set_fat)
+
+# your code here
+fat_sample$ID <- rownames(fat_sample)
+
+training_fat <- sample_n(fat_sample, size = nrow(fat_sample) * 0.70,
+  replace = FALSE
+)
+
+second_set_fat <- anti_join(fat_sample,
+  training_fat,
+  by = "ID"
+)
+
+training_fat <- training_fat  %>% select(-"ID")
+second_set_fat <- second_set_fat %>% select(-"ID")
+
+head(training_fat)
+nrow(training_fat)
+
+head(second_set_fat)
+nrow(second_set_fat)
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '205bb8c19193b79ccc376f7458714fdb', 'grade': True, 'grade_id': 'cell-a648a9e5540d72b0', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.0()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "5046160daadcab1ec6c1647042e78b79", "grade": false, "grade_id": "cell-78e3bba87f64f63a", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.1**
+<br>{points: 1}
+
+Using only the extra data in `second_set_fat`, select a reduced LR using the **backward selection** algorithm. Recall that this method is implemented in the function `regsubsets()` from library `leaps`.
+
+The function `regsubsets()` identifies various subsets of input variables selected for models of different sizes. The argument `x` of `regsubsets()` is analogous to `formula` in `lm()`. 
+
+Create one object using `regsubsets()`with `second_set_fat` and call it `fat_backward_sel`. We will use `fat_bwd_summary_df` to check the results.
+
+**Maintain any ordering of columns seen in `second_set_fat`**
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'e620348547a3cedcfd5d90fe3b596bb5', 'grade': False, 'grade_id': 'cell-9dab19aa23c8ddf6', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# fat_backward_sel <- ...(
+#   x=..., 
+#   nvmax=...,
+#   data=...,
+#   method=...,
+# )
+# fat_backward_sel
+
+#fat_bwd_summary <- summary(fat_backward_sel)
+
+#fat_bwd_summary_df <- data.frame(
+#    n_input_variables = 1:14,
+#    RSQ = fat_bwd_summary$rsq,
+#    RSS = fat_bwd_summary$rss,
+#    ADJ.R2 = fat_bwd_summary$adjr2
+#)
+
+# your code here
+fat_backward_sel <- regsubsets(
+  x=brozek ~ ., 
+  nvmax= 14,
+  data= second_set_fat,
+  method= "backward",
+)
+fat_backward_sel
+
+fat_bwd_summary <- summary(fat_backward_sel)
+
+fat_bwd_summary_df <- data.frame(
+   n_input_variables = 1:14,
+   RSQ = fat_bwd_summary$rsq,
+   RSS = fat_bwd_summary$rss,
+   ADJ.R2 = fat_bwd_summary$adjr2
+)
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '4050e053469faec8c42a80963fd28c93', 'grade': True, 'grade_id': 'cell-1834e0983d6a1794', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.1()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "295442c7f109b6b3413fdc4d601f81bf", "grade": false, "grade_id": "cell-afd9a48edcdcaab0", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.2**
+<br>{points: 1}
+
+The *backward* subset algorithm selected the best model of each size. Results of the 14 models selected are stored in `fat_bwd_summary`. 
+
+Use the *adjusted* $R^2$ of these 14 models, stored in `fat_bwd_summary_df`, to select the best generative model and indicate which input variables are in the selected model.
+
+**A.** `age`.
+
+**B.** `weight`.
+
+**C.** `height`.
+
+**D.** `adipos`.
+
+**E.**  `neck`.
+
+**F.**  `chest`.
+
+**G.**  `abdom`.
+
+**H.**  `hip`.
+
+**I.**  `thigh`.
+
+**J.**  `knee`.
+
+**K.**  `ankle`.
+
+**L.**  `biceps`.
+
+**M.**  `forearm`.
+
+**N.**  `wrist`.
+
+*Assign your answers to the object `answer2.2`. Your answers have to be included in a single string indicating the correct options **in alphabetical order** and surrounded by quotes.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '7261f0d665286dfc3c98f0b19e5501f3', 'grade': False, 'grade_id': 'cell-45de567764bea01e', 'locked': True, 'schema_version': 3, 'solution': False, 'task': False}}
+#Run this cell before continuing to examine the results
+
+fat_bwd_summary_df
+
+fat_bwd_summary 
+```
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '40740c833fd0404a782c1282b8bffb54', 'grade': False, 'grade_id': 'cell-6cebf1be4cc59565', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# answer2.2 <- 
+
+# your code here
+answer2.2 <- "BFGIMN"
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '47dbc102d3b3a6b9319f41c24b6985c6', 'grade': True, 'grade_id': 'cell-1cf2ff609e71bfe7', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.2()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "e5950487d130eddcb387cd4cf99e66bd", "grade": false, "grade_id": "cell-2f834801ab2b709d", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.3**
+<br>{points: 1}
+
+Now that you have selected a subset of input variables, use the independent dataset `training_fat` to build and evaluate a *generative* model. 
+
+Use `lm` to fit the selected model using `training_fat`, and store the results in an object called `fat_bwd_generative`. 
+
+> Enter the selected variables in the **same order** as they are in `training_fat`. This is not statistically needed, it's only needed to autograde this question.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'f7786bd61b2e160051fe8a5944654e74', 'grade': False, 'grade_id': 'cell-b903605318ff9e7d', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# fat_bwd_generative <- ...(...,
+#   ...
+# )
+
+# tidy(fat_bwd_generative)
+
+# your code here
+fat_bwd_generative <- lm(brozek ~ weight + chest + abdom + thigh + forearm + wrist,
+  data = training_fat
+)
+
+tidy(fat_bwd_generative)
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '7359bd255da61317482f710128be1385', 'grade': True, 'grade_id': 'cell-79c41ee8723c1697', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.3()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "777448920f7a213d68372f574f4e7440", "grade": false, "grade_id": "cell-9df046a01453d22d", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.4**
+<br>{points: 1}
+
+Compute the coefficient of determination $R^2$ to evaluate the goodness of fit of the model.
+
+> Note that the evaluation is also based on data from `training_fat`
+
+*Assign your answer to the object `answer2.4`. Your answer is a numeric object*
+<!-- #endregion -->
+
+```{r deletable=FALSE, jp-MarkdownHeadingCollapsed=TRUE, nbgrader={'cell_type': 'code', 'checksum': '1bfa4e87c48d0f1663dbe1b57f3f1695', 'grade': False, 'grade_id': 'cell-785ec8fc3e384cfe', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# *Your code goes here.*
+
+# your code here
+answer2.4 <- glance(fat_bwd_generative)$r.squared
+answer2.4
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'a0b74b744901bf21f21445225d749898', 'grade': True, 'grade_id': 'cell-4cd732f72421bbbd', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.4()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "ddb69f0046c0818f1ca28c8d085e09c9", "grade": false, "grade_id": "cell-e70fc3de3b0c3210", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.5**
+<br>{points: 1}
+
+Interpret the coefficient of determination $R^2$ computed in **Question 2.4** and comment on the goodness-of-fit of the selected model.
+<!-- #endregion -->
+
+<!-- #region deletable=false nbgrader={"cell_type": "markdown", "checksum": "2cafc9bfd902d43f58f936c84a3cd1b7", "grade": true, "grade_id": "cell-eda9e018dea0aa5f", "locked": false, "points": 1, "schema_version": 3, "solution": true, "task": false} -->
+> *Your answer goes here.*
+
+The value of the coefficient of determination $R^2$ is approximately 0.7268 and it suggests that the model explains about 72.68% of the variance in the response variable. This indicates a relatively good fit of the model to the data, meaning that the predictors included in the model provide an explanation for the variation in body fat. However, in other words, it also implies that there is almost 27% of the variance that the model does not be explained.
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "61b98872493eb8f50c6ec0d26781f84a", "grade": false, "grade_id": "cell-d9c0ea56110e917e", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.6**
+<br>{points: 2}
+
+Previous research has shown that while weight can be highly variable during the day and even across days, body circumference measurements (e.g., abdominal circumference) are more stable and better predictors of body fat. Using the results from **Question 2.3**, corroborate if the abdominal circumference, `abdom` is statistically (linearly) associated with the percent of body fat measured by `brozek` (at a significance level of 0.01). 
+
+In your answer, include an interpretation of the estimated coefficients as well as the results of the $t$-tests reported using `tidy()`.
+<!-- #endregion -->
+
+```{r}
+tidy_model <- tidy(fat_bwd_generative) |>
+              filter(term == "abdom")
+tidy_model
+```
+
+<!-- #region deletable=false nbgrader={"cell_type": "markdown", "checksum": "cfd3b746c10549ec946c6a2277889c67", "grade": true, "grade_id": "cell-5ad112504dc133dd", "locked": false, "points": 2, "schema_version": 3, "solution": true, "task": false} -->
+> *Your answer goes here.*
+
+The regression coefficient for abdominal circumference (abdom) is approximately 0.995611 and this indicates a strong linear relationship between the two variables (close to positive 1), suggesting that the abdominal circumference has significant effects on the percentage of body fat, which is statistically significant with a very low p-value of 6.78636e-24. This means that abdominal circumference is a significant predictor of body fat percentage at a significance level of 0.01, explaining a part of the variation in body fat percentage measured by brozek.
+<!-- #endregion -->
+
+```{r}
+
+```

@@ -1,0 +1,689 @@
+---
+jupyter:
+  jupytext:
+    formats: ipynb,Rmd
+    text_representation:
+      extension: .Rmd
+      format_name: rmarkdown
+      format_version: '1.2'
+      jupytext_version: 1.16.0
+  kernelspec:
+    display_name: R
+    language: R
+    name: ir
+---
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "856b1661d1bc13ead2eca8ede9b80648", "grade": false, "grade_id": "cell-f1e1d845873036f4", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+# Tutorial 9: Prediction and Model Selection
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "b75f7897e60da07def4120a33c44b828", "grade": false, "grade_id": "cell-34b6d6e1de870f0a", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+#### Lecture and Tutorial Learning Goals:
+
+By the end of this section, students will be able to:
+
+- Explain the difference between confidence intervals for prediction and prediction confidence intervals and what elements need to be estimated to construct these intervals.
+
+- Write a computer script to calculate these intervals. Interpret and communicate the results from that computer script.
+
+- Give an example of a question that can be answered by predictive modelling.
+
+- Explain the algorithms for the following variable selection methods: • Forward selection • Backward selection
+
+- Explain when a linear regression is an appropriate model to predict new outcomes based on new values of the input variables.
+
+- List model metrics that are suitable for evaluation of a statistical model developed for the purpose of predictive modelling (e.g., RMSE), as well as how they are calculated.
+
+- Discuss how different estimation methods can result in different predictions.
+<!-- #endregion -->
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'c925a5aec069dc734d72f02c9a8372f8', 'grade': False, 'grade_id': 'cell-a2a153352bc44a68', 'locked': True, 'schema_version': 3, 'solution': False, 'task': False}}
+# Run this cell before continuing.
+library(tidyverse)
+library(broom)
+library(repr)
+library(infer)
+library(gridExtra)
+library(faraway)
+library(mltools)
+library(leaps)
+library(glmnet)
+library(cowplot)
+source("tests_tutorial_09.R")
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "7c4d7ae442bf171201f2ca59654e8e59", "grade": false, "grade_id": "cell-b2663beefdcc8af5", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+## 1. Prediction CI *versus* CI for Prediction
+
+In previous lectures we have learned how to estimate LR models and used them to make inference about the population parameters. In this lecture we will learn different concepts related to *prediction*.
+
+> **Heads up**: It is important to distinguished between *in-sample* prediction from *out-of-sample* prediction
+
+We have seen different measures to compare the *in-sample* values of the response with their corresponding predicted values using a LR to evaluate the goodness of the model.
+
+In this first section we are going to recognize and measure the *uncertainty* of these predictions.
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "05360920fc751d25e6071ef808f7a605", "grade": false, "grade_id": "cell-6b0d24d7f154f4c7", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+Let us start by loading the dataset to be used throughout this tutorial. We will use the dataset `fat` from the library `faraway`. You can find detailed information about it in [Johnson (1996)](https://www.tandfonline.com/doi/full/10.1080/10691898.1996.11910505). This dataset contains the percentage of body fat and a whole variety of body measurements (continuous variables) of 252 men. We will use the variable `brozek` as the response variable and a subset 14 variables to build different models. 
+
+Run the code below to create the working data frame called `fat_sample`.
+<!-- #endregion -->
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'db7e0e1b3c320042a8036ec5f52eea75', 'grade': False, 'grade_id': 'cell-1d7ec8f490a2c3bc', 'locked': True, 'schema_version': 3, 'solution': False, 'task': False}}
+fat_sample <- fat %>%
+  select(
+    brozek, age, weight, height, adipos, neck, chest, abdom,
+    hip, thigh, knee, ankle, biceps, forearm, wrist
+  )
+
+head(fat_sample,3)
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "38cec0b7286293c3cab0b916a7d122bf", "grade": false, "grade_id": "cell-2a05a7dad6e0eaf6", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+The response variable `brozek` is the percent of body fat using Brozek's equation:
+
+$$\texttt{brozek} = \frac{457}{\texttt{density}} - 414.2,$$
+
+where body `density` is measured in $\text{g}/\text{cm}^3$.
+
+The 14 input variables are:
+
+- `age`: Age in $\text{years}$.
+- `weight`: Weight in $\text{lb}$.
+- `height`: Height in $\text{in}$.
+- `adipos`: Adiposity index in $\text{kg}/\text{m}^2$.
+
+$$\texttt{adipos} = \frac{\texttt{weight}}{\texttt{height}^2}$$
+
+- `neck`: Neck circumference in $\text{cm}$.
+- `chest`: Chest circumference in $\text{cm}$.
+- `abdom`: Abdomen circumference at the umbilicus and level with the iliac crest in $\text{cm}$.
+- `hip`: Hip circumference in $\text{cm}$.
+- `thigh`: Thigh circumference in $\text{cm}$.
+- `knee`: Knee circumference in $\text{cm}$.
+- `ankle`: Ankle circumference in $\text{cm}$.
+- `biceps`: Extended biceps circumference in $\text{cm}$.
+- `forearm`: Forearm circumference in $\text{cm}$.
+- `wrist`: Wrist circumference distal to the styloid processes in $\text{cm}$.
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "f46fd67af11ce6695f4c8dd815aba937", "grade": false, "grade_id": "cell-942a4a50b59db180", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.0**
+<br>{points: 1}
+
+Let's start by building a SLR using only `weight` to predict `brozek`.
+
+Use the `lm()` function to estimate the SLR. Store this estimated model in the variable `SLR_fat`.
+
+*Fill out those parts indicated with ..., uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '2bfed14ad43e99a75b8020000907be0e', 'grade': False, 'grade_id': 'cell-cee6d509d573577c', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# SLR_fat <- ...(..., ...)
+# SLR_fat
+
+# your code here
+SLR_fat <- lm(brozek ~ weight, data = fat_sample)
+SLR_fat
+
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'dcad7e97d299f54f096499be4b03849c', 'grade': True, 'grade_id': 'cell-8134da8c9b28310c', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_1.0()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "bdfb0044c730f1b6087c67d196f93302", "grade": false, "grade_id": "cell-35a25d7e5fb6c3ac", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.1**
+<br>{points: 1}
+
+In previous lectures, we have learned how to obtain and interpret confidence intervals for the regression parameters. 
+
+Since the predictions are functions of the estimated LR, they also depend on the sample used! A different sample would have resulted in a different estimated LR and different predictions! As dicussed for the estimation of the regression parameters, we can obtain confidence intervals that take into account the sample-to-sample variation of the predictions as well! 
+
+There are 2 type of intervals we can construct depending on the quantity we want to predict: *confidence intervals for prediction* and *prediction confidence intervals*
+
+> **Heads up**: Isn't this confusing?? 
+
+Let's start by computing *confidence intervals for prediction*. These are intervals to predict the *average* brozek index for men of different weights. 
+
+Using `SLR_fat` and `predict`, obtain the asymptotic 95% CIP (confidence intervals for prediction). Create a dataframe, called `fat_cip`, that contains the response, the input, the predictions, and the lower and upper bounds of the intervals for each observation **in that order from left-to-right**. 
+
+*Fill out those parts indicated with ..., uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '56742ba1c2126dcfc426979284409f60', 'grade': False, 'grade_id': 'cell-0718e1af1d8b43a7', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# fat_cip <- fat_sample  %>% 
+#    select(..., ...) %>% 
+#    cbind(predict(...,interval="confidence",se.fit=TRUE)$fit)  %>% 
+#    mutate_if(is.numeric, round, 3)
+# head(fat_cip)
+
+
+# your code here
+fat_cip <- fat_sample  %>% 
+   select(brozek, weight) %>% 
+   cbind(predict(SLR_fat, interval="confidence", se.fit=TRUE)$fit)  %>% 
+   mutate_if(is.numeric, round, 3)
+head(fat_cip)
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '9160e8ee5bf1fced0ce25c0527f046e2', 'grade': True, 'grade_id': 'cell-6e10147cc53c2bef', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_1.1()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "8874a14f58ed2fc6367c3e3a7331cc99", "grade": false, "grade_id": "cell-cc6cc973e47676ca", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.2**
+<br>{points: 1}
+
+We have just calculated the 95% confidence interval for the mean brozek index for men of different weights in our sample. 
+
+Provide a brief interpretation for the 95% confidence interval for prediction you have calculated in row 1.
+<!-- #endregion -->
+
+<!-- #region deletable=false nbgrader={"cell_type": "markdown", "checksum": "76aa3983f86e28fd6b60217db682c747", "grade": true, "grade_id": "cell-cb3333bc637ff1b6", "locked": false, "points": 1, "schema_version": 3, "solution": true, "task": false} -->
+> *Your answer goes here.*
+
+Row 1: with 95% confidence, the expected value of a brozek of 12.6 percent is between 13954 and 15943 (rounded).
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "911eae078702083187991c7e41469d67", "grade": false, "grade_id": "cell-9323580fb03a9331", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.3**
+<br>{points: 1}
+
+Let's now compute and interpret *prediction confidence intervals*. These are intervals to predict the (actual) brozek index for men of different weights.  
+
+You can use `SLR_fat` and `predict` again to obtain the asymptotic 95% PI (prediction intervals) changing the argument `interval`. Create a dataframe, called `fat_pi`, that contains the response, the input, the predictions, and the lower and upper bounds of the intervals for each observation, **in that order from left to right**.
+
+> **Heads up**: read the warning message! since your goal is to predict an actual value, it is important to note that this is not coming from a test set.
+
+*Fill out those parts indicated with ..., uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'bc7261e5b40a55d2668be58b02e3773a', 'grade': False, 'grade_id': 'cell-3f33d5bcc45086bf', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# fat_pi <- fat_sample  %>% 
+#    select(..., ...) %>% 
+#    cbind(predict(...,interval="prediction",se.fit=TRUE)$fit)  %>% 
+#    mutate_if(is.numeric, round, 3)
+# head(fat_pi)
+
+
+# your code here
+fat_pi <- fat_sample  %>% 
+   select(brozek, weight) %>% 
+   cbind(predict(SLR_fat,interval="prediction",se.fit=TRUE)$fit)  %>% 
+   mutate_if(is.numeric, round, 3)
+head(fat_pi)
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '894d58a2c844291a440dff9d59a23f05', 'grade': True, 'grade_id': 'cell-be96a99bc663b158', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_1.3()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "c6fc564c42e5b2f04764c663c9ec1029", "grade": false, "grade_id": "cell-374f140cce1d5d82", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.4**
+<br>{points: 1}
+
+We have just calculated the 95% prediction interval for the brozek index of men of different weights in our sample. 
+
+Provide a brief interpretation for the 95% prediction interval you have calculated in row 1.
+Your interpretation goes here.
+<!-- #endregion -->
+
+<!-- #region deletable=false nbgrader={"cell_type": "markdown", "checksum": "14db4ad991163d443bd534f1d8dd2d72", "grade": true, "grade_id": "cell-87366ebda6badbdb", "locked": false, "points": 1, "schema_version": 3, "solution": true, "task": false} -->
+> *Your answer goes here.*
+
+Row 1: with 95% confidence, the value of a brozek of 12.6 percent is between 2824 and 27072 (rounded).
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "8f80efa3bd8490cfeaaf62aa5b700d58", "grade": false, "grade_id": "cell-780c3ffc246875d0", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.5**
+<br>{points: 1}
+
+Compare the confidence intervals computed in **Question 1.1** with those computed in **Question 1.3** (by row). Which confidence intervals are wider?? Respond and explain why in one or two sentences.
+<!-- #endregion -->
+
+<!-- #region deletable=false nbgrader={"cell_type": "markdown", "checksum": "40a3dd1aba6716fbb04082f830cba039", "grade": true, "grade_id": "cell-77911512fee34bdd", "locked": false, "points": 1, "schema_version": 3, "solution": true, "task": false} -->
+> *Your answer goes here.*
+
+Confidence intervals computed in Question 1.1 account for the sample-to-sample variation, whereas the prediction intervals computed in Question 1.3 also account for the uncertainty of individual observations. Therefore, prediction intervals (Q1.3) are wider than confidence intervals (Q1.1).
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "8f38aefef6865e9b092ad93474015676", "grade": false, "grade_id": "cell-9be71f65643c5906", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+## 2. Predictive Modelling using Linear Regression
+
+In this section you will use the LR as a *predictive model*. Predictive models are built and trained to predict *new* observations. Thus, we need two types of datasets: a *training* set and a *test* set. 
+
+If two independent datasets are not available to build a predictive model, we can:
+
+- approximate the *test* MSE
+
+or 
+
+- use the data in hand and split it to create these datasets.
+
+In this section, you will split the data to build a predictive model on one part using all available variables and test it on the second part of the data.
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "df87dfe42087aeef2794ea9bb2478322", "grade": false, "grade_id": "cell-a04c8e183d2b8b3b", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.0**
+<br>{points: 1}
+
+Let's start by randomly splitting `fat_sample` in two sets on a 70-30% basis: `training_fat` (70% of the data) and `testing_fat` (the remaining 30%) and then train a full LR with all the available input variables on the training set.
+
+You can do the following:
+
+1. Create an `ID` column in `fat_sample` (i.e., `fat_sample$ID`) with the row number corresponding to each man in the sample.
+
+2. Use the function `sample_n()` to create `training_fat` (sampling *without* replacement) with 70\% of the observations coming from `fat_sample`.
+
+3. Use `anti_join()` with `fat_sample` and `training_fat` to create `testing_fat` by column `ID`. 
+
+4. Remove the variable `ID` used to split the data
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '7bee7e60350073d03812daf02bdca0e7', 'grade': False, 'grade_id': 'cell-89cf6aff779ec418', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+set.seed(123) # DO NOT CHANGE!
+
+# fat_sample$ID <- rownames(fat_sample)
+# training_fat <- ...(..., size = nrow(fat_sample) * 0.70,
+#   replace = ...
+# )
+
+# testing_fat <- anti_join(...,
+#   ...,
+#   by = ...
+# )
+
+# training_fat <- training_fat %>% select(-"ID")
+# testing_fat <- testing_fat %>% select(-"ID")
+
+# head(training_fat)
+# nrow(training_fat)
+
+# head(testing_fat)
+# nrow(testing_fat)
+
+# your code here
+fat_sample$ID <- rownames(fat_sample)
+training_fat <- sample_n(fat_sample, size = nrow(fat_sample) * 0.70,
+  replace = FALSE
+)
+
+testing_fat <- anti_join(fat_sample,
+  training_fat,
+  by = "ID"
+)
+
+training_fat <- training_fat %>% select(-"ID")
+testing_fat <- testing_fat %>% select(-"ID")
+
+head(training_fat)
+nrow(training_fat)
+
+head(testing_fat)
+nrow(testing_fat)
+
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '6748cd61c28df959deb8623596f9e80a', 'grade': True, 'grade_id': 'cell-2ff21323a52d80d0', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.0()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "db279f9c8e4bc6ba7ec4f7864daa5161", "grade": false, "grade_id": "cell-fbdb817d4fecd345", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.1**
+<br>{points: 1}
+
+Let's start by building a predictive additive LR with *all* **14** inputs. Call this object `fat_full_OLS`. 
+
+Estimate an additive LR with *all* **14** inputs against the response variable `brozek`  using `lm()` and data from `training_fat`. 
+
+> **If you write down the input variables, the order should match the column order from `training_fat` to pass the autograding tests**.
+
+This will be our baseline model.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'ceca9645a917713ee062067b96e54992', 'grade': False, 'grade_id': 'cell-7f1e7c7d551ff08a', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# fat_full_OLS <- lm(...,
+#   ...
+# )
+# fat_full_OLS
+
+# your code here
+fat_full_OLS <- lm(brozek ~ .,
+  data = training_fat
+)
+fat_full_OLS
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'bc4c9257fff76c554c2ce3e33c7d1b6e', 'grade': True, 'grade_id': 'cell-a73d97e53e776cb3', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.1()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "ce534f3f56b736208bd8a256e8a57dbb", "grade": false, "grade_id": "cell-4d9aa919aef31dbf", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.2**
+<br>{points: 1}
+
+Using `predict()` and `fat_full_OLS`, obtain the (out-of-sample) predicted brozek values for men in `testing_fat`. 
+
+> `second_set_fat` will be used as independent *test data*
+
+Store them in a variable called `fat_test_pred_full_OLS`. 
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '3e268faa9fdebd76f92d8728a88139e5', 'grade': False, 'grade_id': 'cell-70c8d483741b2f75', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# fat_test_pred_full_OLS <- ...(..., newdata = ...)
+# head(fat_test_pred_full_OLS)
+
+# your code here
+fat_test_pred_full_OLS <- predict(fat_full_OLS, newdata = testing_fat)
+head(fat_test_pred_full_OLS)
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '3ed2dfb1d21cef0e6544e4166e7815f9', 'grade': True, 'grade_id': 'cell-3eecb58f55839272', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.2()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "958df40ef2055a95cf408a2a0c380fef", "grade": false, "grade_id": "cell-56f3153cb1b8d3f0", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.3**
+<br>{points: 1}
+
+We will now compute the **Root Mean Squared Error (RMSE)** using data from the test set to evaluate the predictive model. This metric has the same units as the response; and the smaller the value, the better the model.
+
+Use the function `rmse()` from the `mltools` package to compute the $\text{RMSE}_{\text{test}}$ based on the *predicted* brozed values stored in `fat_test_pred_full_OLS` for men in the test set. Note that the observed brozek values for these men are in `testing_fat$brozek`. 
+
+Store this metric in a tibble called `fat_RMSE_models` with two columns:
+
+- `Model`: The regression model from which we will obtain the prediction accuracy.
+- `RMSE`: The $\text{RMSE}_{\text{test}}$ corresponding to the model.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '7bcc1612572ce306390a94deea3ebe5b', 'grade': False, 'grade_id': 'cell-c19eea63afd6743e', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# fat_RMSE_models <- tibble(
+#   Model = "OLS Full Regression",
+#   RMSE = ...(
+#     ...,
+#     ...
+#   )
+# )
+# fat_RMSE_models
+
+# your code here
+fat_RMSE_models <- tibble(
+  Model = "OLS Full Regression",
+  RMSE = rmse(
+    fat_test_pred_full_OLS,
+    testing_fat$brozek
+  )
+)
+head(fat_RMSE_models)
+
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '23b498b7dafa9ed41f83f14807ebd5d6', 'grade': True, 'grade_id': 'cell-e6a348bb9644998f', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.3()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "c7e4404ed70927e459457532daec8834", "grade": false, "grade_id": "cell-b60ff31e0894e27a", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+## 3. Selecting a predictive model
+
+The previous model uses all input variables to predict. However, we may want to select a smaller model by using only a subset of the input variables. The *stepwise selection* algorithms presented in worksheet_09 can be used to build predictive models. 
+
+A good predictive model would be one that minimizes the *test* MSE. However, we can not use the same set to select the model and evaluate its performance. 
+
+Metrics such as $C_p$, AIC and BIC are computed with the *training* set and can be used to *approximate* the *test* MSE, without looking at the *test* data. 
+
+The test set will then be used *only* to assess the predictive performance of the selected model.
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "51ef1a55489b1f87a9bfbfec83d78aac", "grade": false, "grade_id": "cell-57191faff6a77cc2", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 3.0**
+<br>{points: 1}
+
+Using only the training data in `training_fat`, select a reduced LR using the **forward selection** algorithm. Recall that this method is implemented in the function `regsubsets()` from library `leaps`.
+
+The function `regsubsets()` identifies various subsets of input variables selected for models of different sizes. The argument `x` of `regsubsets()` is analogous to `formula` in `lm()`. 
+
+Create one object using `regsubsets()`with `training_fat` and call it `fat_forward_sel`. We will use `fat_fwd_summary` to check your results.
+
+> **Maintain the order of columns seen in `training_fat`**
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'bfe27a22e6d0cc81e2886b6fea8f20ce', 'grade': False, 'grade_id': 'cell-af533e7b226e72ae', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# fat_forward_sel <- ...(
+#   ..., ...,
+#   ...,
+#   ...
+# )
+# fat_forward_sel
+
+#fat_fwd_summary <- summary(fat_forward_sel)
+
+#fat_fwd_summary <- tibble(
+#    n_input_variables = 1:14,
+#    RSS = fat_fwd_summary$rss,
+#    BIC = fat_fwd_summary$bic,
+#    Cp = fat_fwd_summary$cp
+#)
+
+# your code here
+fat_forward_sel <- regsubsets(
+    x = brozek ~ .,
+    nvmax = 14,
+    data = training_fat,
+    method = "forward"
+)
+fat_forward_sel
+
+fat_fwd_summary <- summary(fat_forward_sel)
+
+fat_fwd_summary <- tibble(
+   n_input_variables = 1:14,
+   RSS = fat_fwd_summary$rss,
+   BIC = fat_fwd_summary$bic,
+   Cp = fat_fwd_summary$cp
+)
+
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '6605b243ebb915178f2da5fee6d7b324', 'grade': True, 'grade_id': 'cell-0386d94ee9dd6cff', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_3.0()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "c7ba30fa5d7e49d90fcf389f9eeeb6e3", "grade": false, "grade_id": "cell-6b8abdbff4f33676", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 3.1**
+<br>{points: 1}
+
+Out of the fourteen best models selected for each size by the *forward* subset algorithm and stored in `fat_forward_sel`, we will select the best one in terms of the *out-of-sample* prediction accuracy, estimated by the Mallow's $C_p$. 
+
+Use the $C_p$ computed for each model, stored in `fat_forward_summary`, to select the best predictive model and indicate which input variables are in the selected model.
+
+> **Heads up:** The most accurate model will have the smallest $C_p$. 
+
+
+**A.** `age`.
+
+**B.** `weight`.
+
+**C.** `height`.
+
+**D.** `adipos`.
+
+**E.**  `neck`.
+
+**F.**  `chest`.
+
+**G.**  `abdom`.
+
+**H.**  `hip`.
+
+**I.**  `thigh`.
+
+**J.**  `knee`.
+
+**K.**  `ankle`.
+
+**L.**  `biceps`.
+
+**M.**  `forearm`.
+
+**N.**  `wrist`.
+
+*Assign your answers to the object `answer3.1`. Your answers have to be included in a single string indicating the correct options **in alphabetical order** and surrounded by quotes.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'b1ad5e0f3dd08e4d40bffebf0758763b', 'grade': False, 'grade_id': 'cell-49636409bed6aad7', 'locked': True, 'schema_version': 3, 'solution': False, 'task': False}}
+#Run this cell below before continuing.
+
+fat_fwd_summary
+summary(fat_forward_sel)
+```
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '7c29db216d290a29fe89d86ee5413bbb', 'grade': False, 'grade_id': 'cell-93df75b1dbcf6f3d', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# answer3.1 <- 
+
+# your code here
+answer3.1 <- "ABEGIKMN"
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'a53b432dc340bf464674733e16e5d424', 'grade': True, 'grade_id': 'cell-cdaf675d0527f2a3', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_3.1()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "85c64b5885310c2f08597612aa049ba3", "grade": false, "grade_id": "cell-c2031cb142446eae", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 3.2**
+<br>{points: 1}
+
+Use the variables selected by the forward subset algorithm to build a *predictive* model. 
+
+1. Identify the size of the model that minimizes the $C_P$, call it `cp_min`
+
+2. Find the name of the variables for the best model of size `cp_min`, selected by the forward algorithm. Store them in an object called `selected_var`. Do not include the intercept with the variable names. 
+
+3. Select only those columns and the response `brozek` from `training_fat`. Called the reduced data frames `training_subset`. 
+
+> The previous step allows you to conveniently fit `lm` on all variables in the data, except the response. Note that the test set can include additional variables that won't be used to predict if not included in the model.
+
+4. Train the predictive model using `lm()` and the reduced `training_subset` data. Call it `fat_red_OLS`. 
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'b91c3df0c1bf42ddf692577e33c791ad', 'grade': False, 'grade_id': 'cell-e3cdcbe990c76181', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# cp_min = which.min(...$Cp) 
+# selected_var <- names(...(fat_forward_sel, ...))[-1]
+
+# training_subset <- training_fat %>% select(all_of(selected_var),brozek)
+
+# fat_red_OLS <- ...(...,
+#   ...
+# )
+
+# summary(fat_red_OLS)
+# your code here
+cp_min = which.min(fat_fwd_summary$Cp) 
+selected_var <- names(coef(fat_forward_sel, cp_min))[-1]
+training_subset <- training_fat %>% select(all_of(selected_var),brozek)
+fat_red_OLS <- lm(brozek ~ .,
+  data = training_subset
+)
+
+summary(fat_red_OLS)
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'e7c0e3b6e20cce0178735ca8fceeb112', 'grade': True, 'grade_id': 'cell-4a43c5f1253ecd65', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_3.2()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "a11c8cb0e203113a89d705576857489b", "grade": false, "grade_id": "cell-c10616960ed7f965", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 3.3**
+<br>{points: 1}
+
+Use the trained model `fat_red_OLS` to predict the responses of the test set `testing_fat`, and call the resulting object `fat_test_pred_red_OLS`. 
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '5ac4a9cdc21984778b157901d0c636fa', 'grade': False, 'grade_id': 'cell-652be4fb04a3d08f', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# fat_test_pred_red_OLS <- ...(..., ...)
+
+# your code here
+fat_test_pred_red_OLS <- predict(fat_red_OLS, testing_fat)
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '000969da4f9b0ba9b5b918169227dcf9', 'grade': True, 'grade_id': 'cell-1816fa077859ac09', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_3.3()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "31f62ebb8bc7352632754ebe0dc45642", "grade": false, "grade_id": "cell-eaea21affe2555ba", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 3.4**
+<br>{points: 1}
+
+Use the function `rmse()` to compute the RMSE of predicted brozek values of men in the test set stored in `fat_test_pred_red_OLS`. Add this metric as another row in the tibble `fat_RMSE_models` with `"OLS Reduced Regression"` in the column `Model` and the corresponding $\text{RMSE}_{\text{test}}$ in column `RMSE`.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'aeeca48a373c0b125016f873c684c643', 'grade': False, 'grade_id': 'cell-11bdeb07c5bf1b14', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# fat_RMSE_models <- rbind(
+#   fat_RMSE_models,
+#   tibble(
+#     Model = ...
+#     RMSE = ...
+#     )
+#   )
+# fat_RMSE_models
+
+# your code here
+fat_RMSE_models <- rbind(
+  fat_RMSE_models,
+  tibble(
+    Model = "OLS Reduced Regression",
+    RMSE = rmse(fat_test_pred_red_OLS,
+                testing_fat$brozek)
+    )
+  )
+fat_RMSE_models
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '52799ececc7886508dec2ada3d1e2596', 'grade': True, 'grade_id': 'cell-46381f5f719a7deb', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_3.4()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "3318e7fbeb028d5dfa8333eed3a11a9d", "grade": false, "grade_id": "cell-740283c4e701a459", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 3.5**
+<br>{points: 1}
+
+Based on your results in `fat_RMSE_models`, which model has the best *out-of-sample* prediction performance?
+
+**A.** OLS Full Regression.
+
+**B.** OLS Reduced Regression.
+
+*Assign your answer to an object called `answer3.5`. Your answer should be one of `"A"` or `"B"` surrounded by quotes.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'a78bef49160827c221ffc231cfadff83', 'grade': False, 'grade_id': 'cell-70eb6901ab1210b6', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# answer3.5 <- 
+
+# your code here
+answer3.5 <- "B"
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '75fae35fc5e49710e2d5ffd801f1288c', 'grade': True, 'grade_id': 'cell-9c86e69e26271ed6', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_3.5()
+```
+
+```{r}
+
+```

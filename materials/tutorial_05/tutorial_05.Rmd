@@ -1,0 +1,1062 @@
+---
+jupyter:
+  jupytext:
+    formats: ipynb,Rmd
+    text_representation:
+      extension: .Rmd
+      format_name: rmarkdown
+      format_version: '1.2'
+      jupytext_version: 1.16.0
+  kernelspec:
+    display_name: R
+    language: R
+    name: ir
+---
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "fc2125fca22db584dae709331456d0f3", "grade": false, "grade_id": "cell-f1e1d845873036f4", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+# Tutorial 5: Model Asssumptions and Causality
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "600ec72ee7c4335c2f7fcc7e2d79f0df", "grade": false, "grade_id": "cell-82d9926086d47a80", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+#### Lecture and Tutorial Learning Goals:
+After completing this week's lecture and tutorial work, you will be able to:
+
+1. Give an example of a real problem that aims to test a causal relationship between variables.
+2. Give an example of a real problem the model can only establish an association between the response and the input variables.
+3. Discuss how the desired goal of generative modelling is usually to make causal claims however we cannot often/easily do so (e.g., in particular in the context of observational studies).
+4. Discuss the role of confounders in causal inference.
+5. Describe heteroscedasticity and the problem it presents to generative modeling.
+6. Write a computer script to assess whether heteroscedasticity in a given data set, and if so, use practical solutions to manage it.
+7. Describe colinearity and the problem it presents to generative modeling.
+8. Write a computer script to assess whether collinearity exists between input variables in a given data set, and if so, use practical solutions to manage it.
+9. Discuss what model diagnostics the data scientist can do by themselves and when the data scientist needs to consult a domain expert.
+<!-- #endregion -->
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'c8d18df669dd63886b7e2ab611f4cc4c', 'grade': False, 'grade_id': 'cell-a2a153352bc44a68', 'locked': True, 'schema_version': 3, 'solution': False, 'task': False}}
+# Run this cell before continuing.
+library(tidyverse)
+library(repr)
+library(infer)
+library(cowplot)
+library(broom)
+library(GGally)
+library(AER)
+source("tests_tutorial_05.R")
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "fbcafcae68602c9bff3db2203d1f83d3", "grade": false, "grade_id": "cell-816cbd7b6edadb97", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+## 1. Multicollinearity in Practice
+
+In this tutorial, we will work with the California test score data `CASchools` from the package `AER` with $n = 420$. The [package's documentation](https://rdrr.io/cran/AER/man/CASchools.html) provides the following description:
+
+> The data used here are from all 420 K-6 and K-8 schools from different districts in California with data available for 1998 and 1999. Test scores are on the Stanford 9 standardized test administered to 5th grade students. School characteristics and demographic variables for the students are averaged across the district. 
+
+From all the variables contained in this dataset, we will use the following:
+
+- `district`: district code (character type).
+- `english`: percentage of students in the district that are English learners, i.e., students for whom English is a second language.
+- `read`: average reading score by district, which comes from a standardized test administered to 5th-grade students.
+- `math`: average math score.
+- `students`: total enrollment.
+- `teachers`: number of teachers.
+- `calworks`: percent qualifying for CalWorks (income assistance).
+- `lunch`: percent qualifying for reduced-price lunch.
+- `computer`: number of computers.
+- `expenditure`: expenditure per student.
+- `income`: district average income (in USD 1,000).
+- `english`: percent of English learners.
+
+The math and reading scores are averaged into a new variable called `score`, which will be the response variable in this analysis
+
+The number of students and teachers are combined into a student to teacher ratio, named `stratio`
+<!-- #endregion -->
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '3774ec737102197997774cf3ffc5e72d', 'grade': False, 'grade_id': 'cell-e38120ba8e3ac148', 'locked': True, 'schema_version': 3, 'solution': False, 'task': False}}
+data(CASchools)
+CASchools_dat <- CASchools %>%
+  select(-c(district,school, grades, county)) %>%
+  mutate_if(is.numeric, round, 2)  %>% 
+  mutate(stratio = students/teachers,score=(math + read)/2)  %>% 
+  select(-c(students,teachers, math , read)) 
+
+head(CASchools_dat) 
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "49641f64aa81359c020cdc144ea231f8", "grade": false, "grade_id": "cell-bdb836c57fb47454", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.1**
+<br>{points: 1}
+
+To explore a potential problem of multicollinearity, let's start by exploring (visually) the association between all potential input variables in the dataset. 
+
+Remove the response variable `score` and use the plotting function ggpairs(), from the library GGally, to generate pair plots of ALL the other variables in `CASchools_dat`. The ggplot() object's name will be `CASchools_pair_plots`.
+
+*Fill out those parts indicated with ..., uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '92046c2b269fe0e6c68aafc34f05315e', 'grade': False, 'grade_id': 'cell-3a1487eeace42c1f', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+options(repr.plot.width = 15, repr.plot.height = 12) # Adjust these numbers so the plot looks good in your desktop.
+
+# CASchools_pair_plots <- ... %>%
+#   select(- ...) %>% 
+#   ...(progress = FALSE) +
+#   theme(
+#     text = element_text(size = 15),
+#     plot.title = element_text(face = "bold"),
+#     axis.title = element_text(face = "bold")
+#   )
+# CASchools_pair_plots
+
+# your code here
+CASchools_pair_plots <- CASchools_dat %>%
+  select(- score) %>% 
+  ggpairs(progress = FALSE) +
+  theme(
+    text = element_text(size = 15),
+    plot.title = element_text(face = "bold"),
+    axis.title = element_text(face = "bold")
+  )
+CASchools_pair_plots
+
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '4ecf56ec48a750dab8f370795ea00a4a', 'grade': True, 'grade_id': 'cell-29cb6b9880dbaec7', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_1.1()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "9cf035e90647f70e2771113e0b27d3ca", "grade": false, "grade_id": "cell-f332476c5b314e57", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.2**
+<br>{points: 1}
+
+Based on the pairwise plots and correlation coefficients in `CASchools_pair_plots`, do any pair of *input variables* appear to be highly positively or negatively correlated? Which ones?
+
+Recall that a correlation coefficient equal to $1$ means a perfect positive linear association and $-1$ a perfect negative linear association. A correlation greater than 0.6 in absolute value can be considered "high".
+<!-- #endregion -->
+
+<!-- #region deletable=false nbgrader={"cell_type": "markdown", "checksum": "074654a3276254ffbd823e7512e39302", "grade": true, "grade_id": "cell-0711a0025343eb67", "locked": false, "points": 1, "schema_version": 3, "solution": true, "task": false} -->
+> *Your answer goes here.*
+
+*   The "calworks" and "lunch" variables have a correlation coefficient of 0.739, indicating a strong positive correlation.
+*   The "lunch" and "income" variables have a correlation coefficient of -0.684, indicating a strong negative correlation.
+*   The "lunch" and "english" variables have a correlation coefficient of 0.653, indicating a strong positive correlation.
+*   The "expenditure" and "stratio" variables have a correlation coefficient of -0.620, indicating a strong negative correlation.
+
+These pairs have correlation coefficients with absolute values greater than 0.6 and are therefore considered "high"
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "c163ad9c4e5c901a0486bdc7e1d47042", "grade": false, "grade_id": "cell-79fee9e94a0df6e5", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.3**
+<br>{points: 1}
+
+Another way to visualize pairwise correlation coefficients between all input variables is to use a heatmap. 
+
+Creating this visualization will require prior data wrangling of `CASchools_dat`. 
+
+We will first create a *melted* correlation matrix with all pairwise correlations between the input variables of `CASchools_dat` and name it `corr_matrix_CASchools`. Recall to remove `score` from the dataset to visualize only the correlation between input variables.
+
+> **Hint:** You can use the function `cor()` for this purpose.
+
+The code below will generate a data frame called `corr_matrix_CASchools` with three columns:
+
+- `var1`: first input variable.
+- `var2`: second input variable.
+- `corr`: correlation coefficient between `var1` and `var2`.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '0321c2f0ece57ddb83d0cd9e2f1c70e9', 'grade': False, 'grade_id': 'cell-da025f69d67c73fc', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# corr_matrix_CASchools <- CASchools_dat %>%
+#   select(- ...) %>% 
+#   ...() %>%
+#   as.data.frame() %>%
+#   rownames_to_column("var1") %>%
+#   pivot_longer(-var1, names_to = "var2", values_to = "corr")
+# corr_matrix_CASchools
+
+# your code here
+corr_matrix_CASchools <- CASchools_dat %>%
+  select(- score) %>% 
+  cor() %>%
+  as.data.frame() %>%
+  rownames_to_column("var1") %>%
+  pivot_longer(-var1, names_to = "var2", values_to = "corr")
+corr_matrix_CASchools
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'e7de19b59bcc38a64d12ca4fb1cd2211', 'grade': True, 'grade_id': 'cell-2d8839eed3c31de4', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_1.3()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "2ba7931616b723d852dada0c0de7ae4d", "grade": false, "grade_id": "cell-c44900c11fafef48", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.4**
+<br>{points: 1}
+
+To create a proper $5 \times 5$ correlation matrix on top of a heatmap using `corr_matrix_CASchools`, the function `geom_tile()` from `ggplot2` is necessary. Create a plot called `plot_corr_matrix_CASchools` with the following characteristics:
+
+- It would have the style of a heatmap where the correlation coefficient gives the colour scale. You have to use `scale_fill_distiller()` to select the colour palette (`YlOrRd`, preferably) and adjust the correlation limits on the scale (between `-1` and `1`).
+- The scale legend's title has to be indicated as **Correlation Coefficient**.
+- Include the correlations from `corr_matrix_CASchools` in the corresponding matrix cells **rounded to 2 decimal places**. Use `geom_text()`.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'f5686c2ff83e11f6be84e107cfde4248', 'grade': False, 'grade_id': 'cell-aca886b620cda42a', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+options(repr.plot.width = 15, repr.plot.height = 10) # Adjust these numbers so the plot looks good in your desktop.
+
+# plot_corr_matrix_CASchools <- corr_matrix_CASchools %>%
+#   ggplot(aes(..., ...)) +
+#   ...(aes(fill = ...), color = "white") +
+#   ...("Correlation Coefficient \n",
+#     palette =  ...,
+#     direction = 1, limits = ...
+#   ) +
+#   labs(x = "", y = "") +
+#   theme_minimal() +
+#   theme(
+#     axis.text.x = element_text(
+#       angle = 45, vjust = 1,
+#       size = 18, hjust = 1
+#     ),
+#     axis.text.y = element_text(
+#       vjust = 1,
+#       size = 18, hjust = 1
+#     ),
+#     legend.title = element_text(size = 18, face = "bold"),
+#     legend.text = element_text(size = 18),
+#     legend.key.size = unit(2, "cm")
+#   ) +
+#   coord_fixed() +
+#   geom_text(aes(..., ..., label = round(..., ...)), color = "black", size = 6)
+# plot_corr_matrix_CASchools
+
+# your code here
+plot_corr_matrix_CASchools <- corr_matrix_CASchools %>%
+  ggplot(aes(var1, var2)) +
+  geom_tile(aes(fill = corr), color = "white") +
+  scale_fill_distiller("Correlation Coefficient \n",
+    palette =  "YlOrRd",
+    direction = 1, limits = c(-1, 1)
+  ) +
+  labs(x = "", y = "") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(
+      angle = 45, vjust = 1,
+      size = 18, hjust = 1
+    ),
+    axis.text.y = element_text(
+      vjust = 1,
+      size = 18, hjust = 1
+    ),
+    legend.title = element_text(size = 18, face = "bold"),
+    legend.text = element_text(size = 18),
+    legend.key.size = unit(2, "cm")
+  ) +
+  coord_fixed() +
+  geom_text(aes(var1, var2, label = round(corr, 2)), color = "black", size = 6)
+plot_corr_matrix_CASchools
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '6b451ea22c8a91cf0cac2e33c91d64b7', 'grade': True, 'grade_id': 'cell-07249a17a1961d63', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_1.4()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "ada53b0fe371dcceb918201cebe615a1", "grade": false, "grade_id": "cell-86d54ba592f8807b", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.5**
+<br>{points: 1}
+Let's examine how the multicollinearity problem affects the least squares estimators. Using `CASchools_dat`, estimate an MLR called `MLR_CASchools` relating the response `score` to all the input variables selected.
+
+*Tip*: in `lm`, you can use `.` at the RHS to avoid typing all input variables
+
+> lm(response ~ ., data)
+
+Obtain the estimated coefficients, SEs, statistics and $p$-values using `tidy()`. Store the results in `MLR_CASchools_results`.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '10d6a984789c301af9ae32e3eff5272c', 'grade': False, 'grade_id': 'cell-b047e536831580ff', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# MLR_CASchools <- ...(..., ...)
+
+# MLR_CASchools_results <- ...(...) %>% mutate_if(is.numeric, round, 2)
+# MLR_CASchools_results
+
+# your code here
+MLR_CASchools <- lm(score ~., data = CASchools_dat)
+
+MLR_CASchools_results <- tidy(MLR_CASchools) %>% mutate_if(is.numeric, round, 2)
+MLR_CASchools_results
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '62322aac266220df14281da7edadaa4d', 'grade': True, 'grade_id': 'cell-8b5895a7e7cc293d', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_1.5()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "2103979be79bf816fb09f5e6ef5f9d31", "grade": false, "grade_id": "cell-6b73171e8faa288b", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.6**
+<br>{points: 1}
+
+Some of the input variables are highly correlated and will be a problem for the least square estimates of the regression coefficients and their standard errors. A problem known as *multicollinearity*.
+
+We can use the Variance Inflation Factor (VIF) to help quantify multicollinearity in a dataset. VIF ranges from $1$ (no multicollinearity) to infinity. The smallest the VIF, the lower the sign of multicollinearity. 
+
+Calculate the VIF for your model `MLR_CASchools`. Assign the results to an object `VIF_MLR_CASchools`.
+
+> **Hint:** A `vif()` function is available as part of the `car` package.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '6e6e81473c91e45559c94165cde2880f', 'grade': False, 'grade_id': 'cell-18dbf3780d7b50d7', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# VIF_MLR_CASchools <- ...(...)
+# round(VIF_MLR_CASchools, 3)
+
+# your code here
+VIF_MLR_CASchools <- vif(MLR_CASchools)
+round(VIF_MLR_CASchools, 3)
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '58b08bd15a82b7b5fbe68ca41a9b9cc6', 'grade': True, 'grade_id': 'cell-7d47504bf989d85b', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_1.6()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "fecb8bcade8e0dc920232d937d1fbc04", "grade": false, "grade_id": "cell-391b87ef2d60eddb", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.7**
+<br>{points: 1}
+
+Based on the VIF results in `VIF_MLR_CASchools`, answer the following questions:
+
+**1.7.0.** Select the top-2 variables with the highest VIFs?
+
+**A.** `calworks`.
+
+**B.** `lunch`.
+
+**C.** `computer`.
+
+**D.** `expenditure`.
+
+**E.** `income`.
+
+**F.** `english`.
+
+**G.** `stratio`.
+
+*Assign your answer to the object `answer1.7.0`. Your answer must be a single string indicating the correct options **in alphabetical order** and surrounded by quotes (e.g., `"FG"` indicates you are selecting these two options).*
+
+**1.7.1.** Does this pair also have the highest absolute correlation from all the pairwise correlations shown in the heatmap `plot_corr_matrix_CASchools`?
+
+**A.** Yes.
+
+**B.** No.
+
+*Assign your answer to an object called `answer1.7.1`. Your answer should be a single character surrounded by quotes.*
+
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '9139370cdb51d078b0fd00926bbe8cf6', 'grade': False, 'grade_id': 'cell-c245dab6eff7b933', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# answer1.7.0 <- ...
+# answer1.7.1 <- ...
+
+# your code here
+answer1.7.0 <- "AB"
+answer1.7.1 <- "A"
+
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '436bfaf9776434f87010bffacef1410e', 'grade': True, 'grade_id': 'cell-fe5a46716d2796de', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_1.7.0()
+test_1.7.1()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "eee4848218edba70d4a22a75cbfcb8bc", "grade": false, "grade_id": "cell-615566ec9e326774", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.8**
+<br>{points: 1}
+
+One way to deal with multicollinearity is dropping those input variables associated with the largest VIFs and pairwise correlation coefficients. We now estimate a reduced MLR using only a subset of the input variables in `CASchools_dat`, call it `red_MLR_CASchools`, as follows:
+
+- From the pair of input variables with the highest absolute correlation (positive or negative) in `plot_corr_matrix_CASchools`, only use the one with the smallest VIF found in `VIF_MLR_CASchools`.
+- Add **the rest** of input variables found in `CASchools_dat`.
+
+Hence, `red_MLR_CASchools` will have four input variables. Use `tidy()` to summarize results in `red_MLR_CASchools_results`
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '0a3652fc7f0e11cf410cd4acc8236812', 'grade': False, 'grade_id': 'cell-79017f091c0a702a', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# red_MLR_CASchools <- CASchools_dat  %>% select(-...) %>% 
+#                        ...(..., data = .)
+
+# red_MLR_CASchools_results <- ...(...) %>% mutate_if(is.numeric, round, 2)
+# red_MLR_CASchools_results
+
+# your code here
+red_MLR_CASchools <- CASchools_dat  %>% select(-lunch) %>% 
+                       lm(score ~ ., data = .)
+
+red_MLR_CASchools_results <- tidy(red_MLR_CASchools) %>% mutate_if(is.numeric, round, 2)
+red_MLR_CASchools_results
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'a858dd926abffd0523ed4847046cd7d1', 'grade': True, 'grade_id': 'cell-baeba67fb1185d73', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_1.8()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "54125d5e8f07989103abc03d333ccb54", "grade": false, "grade_id": "cell-7192f37e433e5fef", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.9**
+<br>{points: 1}
+
+Compare the results of `MLR_CASchools_results` with those of `red_MLR_CASchools_results`. Comment on how the estimates and $p$-values for the coefficients of the remaining input variables have changed after removing a highly correlated variable from the data.
+<!-- #endregion -->
+
+<!-- #region deletable=false nbgrader={"cell_type": "markdown", "checksum": "b2b3c288c2a50136ce09c868497b14af", "grade": true, "grade_id": "cell-60d793598ab82440", "locked": false, "points": 1, "schema_version": 3, "solution": true, "task": false} -->
+> *Your answer goes here.*
+
+Comparing these two results, I observe that adjustments were made to certain variables following a Variance Inflation Factor (VIF) analysis to reduce multicollinearity. The estimate for calworks changed from -0.09 to -0.47, with the p-value significantly decreasing from 0.11 to 0.00. The estimate for income increased from 0.62 to 1.10, and the estimate for english changed from -0.21 to -0.45, both showing statistically significant changes. Moreover, the p-value for the computer variable decreases from 0.69 to 0.14, though it states not statistically significant. These changes reflect the results of reducing multicollinearity by VIF, indicating that the removal of the lunch variable impacted the estimates and statistical significance of the other variables.
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "83b0e868ad106c4a360f6c661cc6335c", "grade": false, "grade_id": "cell-392da48ce72e62fc", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.10**
+<br>{points: 1}
+
+Now, obtain the VIFs with `red_MLR_CASchools`. Assign the results to an object `VIF_red_MLR_CASchools`.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '0e703c60a91c868a2ab37317da3e6186', 'grade': False, 'grade_id': 'cell-bee23d9a039ecbc0', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# VIF_red_MLR_CASchools <- ...(...)
+# round(VIF_red_MLR_CASchools, 3)
+
+# your code here
+VIF_red_MLR_CASchools <- vif(red_MLR_CASchools)
+round(VIF_red_MLR_CASchools, 3)
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '8001590206ec83f0a99ee135ca1c612b', 'grade': True, 'grade_id': 'cell-745b0ee2c7dd1228', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_1.10()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "d1fa60f1b76b2bf467be333ba9dea066", "grade": false, "grade_id": "cell-b57d5330ef2fb37b", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.11**
+<br>{points: 1}
+
+James et al. (2013) in [*An Introduction to Statistical Learning*](https://www.statlearning.com/) (see Section 3.3.3 in Subsection Collinearity) indicate that, as a rule of thumb, a VIF value that exceeds 5 or 10 is an indicator of a  multicollinearity problem. 
+
+Comparing the results of `VIF_MLR_CASchools` with those of `VIF_red_MLR_CASchools`, and following this recommendation, do you think that excluding the variable with the largest VIF in `VIF_MLR_CASchools` solved the multicollinearity issue? 
+
+**A.** Yes.
+
+**B.** No.
+
+*Assign your answer to an object called `answer1.11`. Your answer should be a single character surrounded by quotes.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '5ed7ade9eabe222f102fe83f5471e078', 'grade': False, 'grade_id': 'cell-7d0bb6092b6f7a10', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# answer1.11 <- ...
+
+# your code here
+answer1.11 <- "A"
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '6591377ce0b26ec63692c41976db2ef2', 'grade': True, 'grade_id': 'cell-1211f090ad5a1c48', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_1.11()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "0fc999147b3940936c2d626031c5411a", "grade": false, "grade_id": "cell-e3c17356f141ff17", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+## 2.  Causality and Confounders
+
+In this section we will explore the problem of confounders in causal inference using a simulation. 
+
+Roughly speaking, in a framework where $X$ is the input variable and $Y$ is the response, another input variable $C$ confounds the $X$-$Y$ relationship if $C$ and $X$ are associated, and $C$ and $Y$ are associated. 
+
+Let us retake the example from `worksheet_01` and `tutorial_01` of an A/B testing involving two versions of a TikTok ad:
+
+- Suppose a sport company's marketing team has developed a new video for their TikTok ad. They want to know if this **new** ad will **increase** the ad engagement (which they will measure via the *ad dwell time* in seconds, i.e., a continuous response) compared to the **current** ad they are running in a given customer population.
+- Furthermore, let us make the framework more complex. Suppose that athletes in this population have larger dwell times and are more interested to innovations by the company. 
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "d9a5ab81b846600f1ab26ee75e2d5933", "grade": false, "grade_id": "cell-b0ddbc2b49fd6310", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.0**
+<br>{points: 1}
+
+Under this framework, what is the response $Y$?
+
+**A.** Type of TikTok ad.
+
+**B.** Ad dwell time.
+
+**C.** Athlete (yes/no).
+
+*Assign your answer to the object `answer2.0`. Your answer should be one of `"A"`, `"B"`, or `"C"` surrounded by quotes.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '22759d8e49bd0f9c25a4472ce30814c9', 'grade': False, 'grade_id': 'cell-eed3afcb65991076', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# answer2.0 <- 
+
+# your code here
+answer2.0 <- "B"
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '2ab665424453a98f292cc2e999374ee0', 'grade': True, 'grade_id': 'cell-cd2ea06a05dc7285', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.0()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "486935c1fcefecf145138e4575ddfbd3", "grade": false, "grade_id": "cell-c25695907ba2f68a", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.1**
+<br>{points: 1}
+
+What is the main input of interest $X$?
+
+**A.** Type of TikTok ad.
+
+**B.** Ad dwell time.
+
+**C.** Athlete (yes/no).
+
+*Assign your answer to the object `answer2.1`. Your answer should be one of `"A"`, `"B"`, or `"C"` surrounded by quotes.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'dda11279c6b25be66a8bad12d0a24acc', 'grade': False, 'grade_id': 'cell-53e33b2a3393b147', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# answer2.1 <- 
+
+# your code here
+answer2.1 <- "A"
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '5b30e3288f85afef4915d3ca12ecb1db', 'grade': True, 'grade_id': 'cell-511afb8019bd3aba', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.1()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "cf1e3e75f76e459fc8b1ab56132998f7", "grade": false, "grade_id": "cell-406757efd979b4fd", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.2**
+<br>{points: 1}
+
+True or False?
+
+If we regress the dwell time on the type of add, ignoring which customers are athletes, the results of the estimation may be counfounded.
+
+*Assign your answer to an object called `answer2.2`. Your answer should be either "true" or "false", surrounded by quotes.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '95055df318451e576872bf2ecdcc0db5', 'grade': False, 'grade_id': 'cell-2c1bb86a41cbfb48', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# answer2.2 <- 
+
+# your code here
+answer2.2 <- "true"
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'dc49e6add3bf4f526d319e98611e553d', 'grade': True, 'grade_id': 'cell-511551fbe07fe107', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.2()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "84f435dbf401ad3d3f367ffa8f4cbb84", "grade": false, "grade_id": "cell-e3d008e5ce798ba0", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+There is more than one way to deal with confounding factors if we want to detect a causal relationship between $X$ and $Y$. Depending on the nature of the study, one could do the following:
+
+1. In the case of observational studies, stratification is a good strategy. It implies checking the association between $X$ and $Y$ within subgroups of observations that share common values for the confounder(s). 
+2. In an experimental study, such as A/B testing, we would randomize each subject to a particular value of $X$. Then, we compare $Y$ across the different groups of $X$. 
+
+> **Heads-up:** The second strategy is the golden standard in causal inference. Nonetheless, it is not always practical or even ***ETHICAL*** to randomly assign experimental units to experimental groups.
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "21e623bb0b4d312c5355b0a2038e4ed9", "grade": false, "grade_id": "cell-ffcc6f6af69b862d", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.3**
+<br>{points: 1}
+
+We will start by building a synthetic population for the TikTok ad case. Suppose this population has `1000000` customers (`pop.size`), where 50% are athletes and another 50% are not (i.e., a categorical variable called `athlete` with levels "Y" and "N"). 
+
+Build a tibble containing all the customers in the population called `pop.pool` with a column for `athlete`. The values in this column needs to be simulated, as explained above. Input the count of `Y` values in `pop.pool` into the variable `pop.pool.Y` to record the number of athlets in the population.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '30758acb0f6cdade62371120f8379b62', 'grade': False, 'grade_id': 'cell-5d74a040b48f236e', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+set.seed(123) # DO NOT CHANGE!
+
+# pop.size <- ...
+
+# pop.pool <- tibble(
+#   athlete = sample(c(rep("Y", ...), rep("N", ...))),
+# )
+# head(pop.pool)
+# pop.pool.Y <- sum(...)
+
+# your code here
+pop.size <- 1000000
+
+pop.pool <- tibble(
+  athlete = sample(c(rep("Y", pop.size / 2), rep("N", pop.size / 2))),
+)
+head(pop.pool)
+
+pop.pool.Y <- sum(pop.pool$athlete == "Y")
+pop.pool.Y
+
+
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'cdc1aba5f8b86a8386f1bd7f34d8eb0b', 'grade': True, 'grade_id': 'cell-47a39f1d99adab36', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.3()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "273ef03c9bf403c729bd6485af8861a7", "grade": false, "grade_id": "cell-40e4b88508f59c6d", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.4**
+<br>{points: 1}
+ 
+Once we have our population pool of customers, we need to simulate their corresponding dwell times $Y$ under 2 scenarios: assuming they watch the current ad and assuming they watch the new ad. Hence, each customer in the population will have a pair of "potential" responses. *We will later assign only one of these to each customer.*
+
+Within the population, both responses will be generated from a distribution with different means. Note that you are in control of the data generating process and, by design, there is a difference in the means of the different groups.
+<!-- #endregion -->
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '981c890a51d7351e6e0bc6f0159011f7', 'grade': False, 'grade_id': 'cell-1a6728d9ae0da8aa', 'locked': True, 'schema_version': 3, 'solution': False, 'task': False}}
+# Run this cell before continuing.
+
+mean_current_ad <- 15 + 5 * (pop.pool$athlete == "Y")
+round(head(mean_current_ad), 4)
+
+mean_new_ad <- mean_current_ad + 8
+round(head(mean_new_ad), 4)
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "793ca0bdc157445d0c6b1576d02f1db2", "grade": false, "grade_id": "cell-3001bf5f439ef090", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+The code above is generating the mean of each customers' response (in seconds) within `pop.pool`, according to their sport experience (athlete vs non-athlete):
+
+- `mean_current_ad`: This is the vector of `1000000` response means corresponding to customers watching the current video. It has a baseline of `15` seconds for each customer, plus `5` additional seconds if the customer is an athlete.
+
+- `mean_new_ad`: This is the vector of `1000000` response means corresponding to customers watching the new video. It is just the vector `mean_current_ad` plus `8` seconds for *all* the customers. 
+
+> **Note that the value of `8` in `mean_new_ad` is the one we aim to estimate, which indicates that the new ad increases the dwell time by 8 seconds in the customer population.**
+
+Once we have these vectors of means, we can simulate the response variables `y_current_ad` and `y_new_ad` and incorporate them in `pop.pool` as two new columns. We will use the Normal distribution to generate these responses. 
+
+In the code below, use `rnorm()` with means `mean_current_ad` and `mean_new_ad` and fixed standard deviations of 1 second to generate values of `y_current_ad` and `y_new_ad`, respectively.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'f6e3c2fc5dcb628d98cad6aa1d776288', 'grade': False, 'grade_id': 'cell-d71994c428302267', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+set.seed(123) # DO NOT CHANGE!
+
+# pop.pool$y_current_ad <- ...(..., ..., ...)
+# pop.pool$y_new_ad <- ...(..., ..., ...)
+# head(pop.pool)
+
+# your code here
+pop.pool$y_current_ad <- rnorm(n = nrow(pop.pool), mean = mean_current_ad, sd = 1)
+pop.pool$y_new_ad <- rnorm(n = nrow(pop.pool), mean = mean_new_ad, sd = 1)
+head(pop.pool)
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '90f790e06b178e17137b3b1be1437c07', 'grade': True, 'grade_id': 'cell-e50844f0c393fa63', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.4()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "81940c698248a70c253bec1db1e40300", "grade": false, "grade_id": "cell-29dc9015d4065880", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.5**
+<br>{points: 1}
+
+Now that we have all the values from the populations of interest, we can generate a sample with the characteristics of an observational study. That is, we simulate a situation in which each customer chooses the type of ad to be seen, instead of being randomly assigned by the experimental designer.
+
+Run the following cell to create a factor-type column called `x_self_choice` from a binomial distribution whose probability of success (in our case, "choosing the new ad") increases when the customer is an athlete (check argument `prob` in `rbinon()`). 
+
+> Note that the factor levels in `x_self_choice` are labeled as `Current` for `0` and `New` for `1`.
+<!-- #endregion -->
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '5250ce2c39dcac6928a94d4dc29862e7', 'grade': False, 'grade_id': 'cell-c0acf3c36979015d', 'locked': True, 'schema_version': 3, 'solution': False, 'task': False}}
+# Run this cell before continuing.
+
+set.seed(123)
+
+pop.pool$x_self_choice <- factor(rbinom(pop.size,
+  size = 1,
+  prob = 0.5 + 0.3 * (pop.pool$athlete == "Y")), labels = c("Current", "New"))
+head(pop.pool)
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "ce68102a298d15eb173355977d36877a", "grade": false, "grade_id": "cell-5a0044ced645f62b", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+### Observational data
+
+We will now use all the information collected in `pop.pool` to create a new variable, `y_obs`, which will contain the *actual observed* response by each customer based on `x_self_choice`. In other words:
+
+**IF** the customer is more likely to choose the `New` ad then the column `y_obs` will contain the value indicated in `y_new_ad`, **ELSE** otherwise. 
+
+Then, from `pop.pool`, use the function `rep_sample_n()` to collect one sample of size `1000` and call it `sample_TikTok`.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '08958c55d89df6bb238abbdb6a2a6bf1', 'grade': False, 'grade_id': 'cell-0736cf2f7e958f82', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+set.seed(123) # DO NOT CHANGE!
+
+# pop.pool$y_obs <- ...(...,
+#   ..., ...
+# )
+
+# sample_obs_study <- ...(pop.pool, ...)
+# head(sample_obs_study)
+
+# your code here
+pop.pool$y_obs <- ifelse(pop.pool$x_self_choice == "New", 
+  pop.pool$y_new_ad, pop.pool$y_current_ad
+)
+
+sample_TikTok <- rep_sample_n(pop.pool, size = 1000)
+head(sample_TikTok)
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'e4f005a64936a324afe6767b2db43d89', 'grade': True, 'grade_id': 'cell-2afaf13813805749', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.5()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "30b44667ba3ffd531f83f067598fbd79", "grade": false, "grade_id": "cell-2a9fb534c81a063a", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.6**
+<br>{points: 1}
+
+We need to graphically compare the observed distributions and spread in both ads within `sample_TikTok` via side-by-side boxplots. The `ggplot()` object's name will be `obs_dwell_time_boxplots`. Note that function `stat_summary()` will need to add the treatment means as points on top of each boxplot.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '20036781d462479d49bc309175e6653d', 'grade': False, 'grade_id': 'cell-135841c9a47ba8d4', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+options(repr.plot.width = 15, repr.plot.height = 7) # Adjust these numbers so the plot looks good in your desktop.
+
+# obs_dwell_time_boxplots <- ... %>%
+#   ggplot() +
+#   ...(aes(..., ..., fill = ...)) +
+#   theme(
+#     text = element_text(size = 22),
+#     plot.title = element_text(face = "bold"),
+#     axis.title = element_text(face = "bold")
+#   ) +
+#   ggtitle(...) +
+#   xlab(...) +
+#   ylab(...) +
+#   stat_summary(aes(..., ..., fill = ...),
+#     fun = ..., colour = "yellow", geom = "point",
+#     shape = 18, size = 5
+#   )
+# obs_dwell_time_boxplots
+
+# your code here
+obs_dwell_time_boxplots <- sample_TikTok %>%
+  ggplot() +
+  geom_boxplot(aes(x_self_choice, y_obs, fill = x_self_choice)) +
+  theme(
+    text = element_text(size = 22),
+    plot.title = element_text(face = "bold"),
+    axis.title = element_text(face = "bold")
+  ) +
+  ggtitle("Dwell Time by Ad Type") +
+  xlab("Self-Choice of Ad") +
+  ylab("Dwell Time") +
+  stat_summary(aes(x_self_choice, y_obs, fill = x_self_choice),
+    fun = mean, colour = "yellow", geom = "point",
+    shape = 18, size = 5
+  )
+obs_dwell_time_boxplots
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'cff0ab5fa041d71692df6d6f115d955b', 'grade': True, 'grade_id': 'cell-35eb3c58e4b6d18c', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.6()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "06392ad613f65080bc668bf5864cb456", "grade": false, "grade_id": "cell-08657cd3680eed15", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.7**
+<br>{points: 1}
+
+**Confounding**: in this question we will analyze the data collected in an observational study from `sample_TikTok` ignoring the variable `athlete`.
+
+Imagine that we only collect the dwell times and the type of chosen ad, but we **don't know** if the custormer is an athlete. 
+
+Suppose you want to estimate the **real population effect** in the dwell time of the new ad compared to that of the current ad. Recall we set up our synthetic data in such a way this effect is an increase of 8 seconds.
+
+Using `sample_TikTok`, estimate a linear regression called `conf_obs_study_TikTok` of the dwell time (`y_obs`) versus the chosen type of ad (`x_self_choice`). 
+
+Report the estimated coefficients, their standard errors, and corresponding $p$-values using `tidy()`. Include the corresponding asymptotic 95% confidence intervals. Store the results in the variable `conf_obs_study_TikTok_results`.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'a25dbfb4ff3f269a9790f4e9257f96cf', 'grade': False, 'grade_id': 'cell-1313896e49c6aee6', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# conf_obs_study_TikTok <- ...(...,
+#   ...
+# )
+# conf_obs_study_TikTok
+
+# conf_obs_study_TikTok_results <- ...(..., ...) %>% mutate_if(is.numeric, round, 2)
+# conf_obs_study_TikTok_results
+
+# your code here
+conf_obs_study_TikTok <- lm(y_obs ~ x_self_choice,
+  data = sample_TikTok
+)
+conf_obs_study_TikTok
+
+conf_obs_study_TikTok_results <- tidy(conf_obs_study_TikTok, conf.int = 0.95) %>% mutate_if(is.numeric, round, 2)
+conf_obs_study_TikTok_results
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '1afeb67a9b5978b4688811b53232db36', 'grade': True, 'grade_id': 'cell-97ab1a50d7e40d8c', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.7()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "3f138d8ddc8a1600d74cc1cc28d26299", "grade": false, "grade_id": "cell-76f78b30af892d8d", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.8**
+<br>{points: 1}
+
+Based on your output in `conf_obs_study_TikTok_results`, what can we conclude on the estimation of the population effect of the new ad?
+
+**A.** The estimated effect in dwell time when switching from the current to the new ad increases by 9.83 seconds. The effect is largely overestimated in this analysis.
+
+**B.** The estimated effect in dwell time when switching from the current to the new ad increases by 9.83 seconds. The effect is largely underestimated in this analysis.
+
+**C.** The estimated effect in dwell time when switching from the new to the current ad increases by 9.83 seconds. The effect is largely overestimated in this analysis.
+
+**D.** The estimated effect in dwell time when switching from the new to the current ad increases by 9.83 seconds. The effect is largely underestimated in this analysis.
+
+*Assign your answer to an object called `answer2.8`. Your answer should be one of `"A"`, `"B"`, `"C"`, or `"D"` surrounded by quotes.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'f91c4ff963c7760b156e98e6f66058bc', 'grade': False, 'grade_id': 'cell-d38cd78b0d396177', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# answer2.8 <- 
+
+# your code here
+answer2.8 <- "A"
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '2af8a0752f78430510b5439d955975b5', 'grade': True, 'grade_id': 'cell-61180c1b678acdef', 'locked': True, 'points': 0, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.8()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "31cf06391f07db98fbe6937dc890f8b2", "grade": false, "grade_id": "cell-509ae6272066b4c2", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.9**
+<br>{points: 1}
+
+Now, let us suppose we can collect additional information about the customers. In particular, we add information about the sport experience of the custormers contained in the variable `athlete` in `sample_TikTok`.
+
+Estimate a MLR called `MLR_obs_study_TikTok` of the dwell time (`y_obs`) versus the type of ad and the respective confounders. Report the estimated coefficients, their standard errors, and corresponding $p$-values using `tidy()`. Include the corresponding asymptotic 95% confidence intervals. Store the results in the variable `MLR_obs_study_TikTok_results`.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '897ca6d26383cd7e167cba6032bf582e', 'grade': False, 'grade_id': 'cell-4b4972e9a2a02474', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# MLR_obs_study_TikTok <- ...(...,
+#   ...
+# )
+# MLR_obs_study_TikTok
+
+# MLR_obs_study_TikTok_results <- ...(..., ...) %>% mutate_if(is.numeric, round, 2)
+# MLR_obs_study_TikTok_results
+
+# your code here
+MLR_obs_study_TikTok <- lm(y_obs ~ athlete + x_self_choice,
+  data = sample_TikTok
+)
+MLR_obs_study_TikTok
+
+MLR_obs_study_TikTok_results <- tidy(MLR_obs_study_TikTok, conf.int = 0.95) %>% mutate_if(is.numeric, round, 2)
+MLR_obs_study_TikTok_results
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '18d76ae4cbe2a39fa00e76b9f64fcb4c', 'grade': True, 'grade_id': 'cell-43075d8b8c29cc48', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.9()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "4f7d98993735c14de3b41a4e899b66e0", "grade": false, "grade_id": "cell-b4c1bc1fd59903d2", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.10**
+<br>{points: 1}
+
+Based on your output in `MLR_obs_study_TikTok_results`, how does the estimation of the effect of the new ad change when the confounder is included in the model?
+<!-- #endregion -->
+
+<!-- #region deletable=false nbgrader={"cell_type": "markdown", "checksum": "dcdcd49b15c28ca7ca5e2d3735265e22", "grade": true, "grade_id": "cell-5fcc3ba90d779ebc", "locked": false, "points": 1, "schema_version": 3, "solution": true, "task": false} -->
+> *Your answer goes here.*
+
+When the variable of athlete and x_self_choice are included in the model to estimate the effect of the new ad, I can see that the coefficient estimate for athlete is 4.94, indicating that customers who are athletes tend to spend more time on the ad, and the coefficient estimate for x_self_choiceNew is 7.92, indicating that customers who choose the new ad also tend to spend more time on it. Both variables show statistically significant results, demostrating that the effect of the new ad becomes more apparent.
+<!-- #endregion -->
+
+#### <font color="blue"> In observational studies, ommiting a confounding factor affects the estimates of the regression and causality can not be established. </font>
+
+Including the confounder in the regression solves the problem. However, confounding variables are not always easy to collect. 
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "a8da84652630045714b979dc5bd20a2e", "grade": false, "grade_id": "cell-d40dbf50fe9feef7", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+### Experimental data
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "525feb56b4d00ef929441ac34414603e", "grade": false, "grade_id": "cell-5505bc3e009ac037", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.11**
+<br>{points: 1}
+
+Finally, let us imagine we are able to run an experimental study (i.e., A/B testing) in which customers from the `sample_TikTok` are randomly assigned an add using **a balanced design**. 
+
+To simulate this case, create a two-level factor-type column called `x_randomized` by randomly assigning each customer to view either the `Current` ad or the `New` ad. 
+
+Then, create another column in `sample_TikTok` called `y_exp`, which will contain the obtained experimental response based on the add assigned by `x_randomized`. In other words: 
+
+**IF** the customer is assigned to `New` then the column `y_exp` will contain the value indicated in `y_new_ad`, **ELSE** otherwise.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '757bff5e3cc649bca2fe42aec32234eb', 'grade': False, 'grade_id': 'cell-4101c7d59ebcac8a', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+set.seed(1234) # DO NOT CHANGE!
+
+# sample_TikTok$x_randomized <- ...(c(
+#   rep("Current", ...),
+#   rep("New", ...)
+# ))
+# sample_TikTok$y_exp <- ...(...,
+#   ...
+# )
+# head(sample_TikTok)
+
+# your code here
+sample_TikTok$x_randomized <- sample(c(
+  rep("Current", nrow(sample_TikTok)/2),
+  rep("New", nrow(sample_TikTok)/2)
+))
+sample_TikTok$y_exp <- ifelse(sample_TikTok$x_randomized == "New",
+  sample_TikTok$y_new_ad, sample_TikTok$y_current_ad
+)
+head(sample_TikTok)
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '847cbb02226dd54ce0aa0050aa153939', 'grade': True, 'grade_id': 'cell-784892a23f8a31b2', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.11()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "e955fc8e2ed825452e3e2231e3ca2431", "grade": false, "grade_id": "cell-41b230b7b28449a7", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.12**
+<br>{points: 1}
+
+As before, let's graphically compare the experimental distributions and spread in both ads within `sample_TikTok` via side-by-side boxplots. 
+
+The `ggplot()` object's name will be `exp_dwell_time_boxplots`. Note that function `stat_summary()` will need to add the treatment means as points on top of each boxplot.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'a380ce89be2f2dc436eadbf883757381', 'grade': False, 'grade_id': 'cell-461f5a88c352b71b', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# exp_dwell_time_boxplots <- ... %>%
+#   ggplot() +
+#   ...(aes(..., ..., fill = ...)) +
+#   theme(
+#     text = element_text(size = 22),
+#     plot.title = element_text(face = "bold"),
+#     axis.title = element_text(face = "bold")
+#   ) +
+#   ggtitle(...) +
+#   xlab(...) +
+#   ylab(...) +
+#   stat_summary(aes(..., ..., fill = ...),
+#     fun = ..., colour = "yellow", geom = "point",
+#     shape = 18, size = 5
+#   )
+# plot_grid(obs_dwell_time_boxplots, exp_dwell_time_boxplots)
+
+# your code here
+exp_dwell_time_boxplots <- sample_TikTok %>%
+  ggplot() +
+  geom_boxplot(aes(x = x_randomized, y = y_exp, fill = x_randomized)) +
+  theme(
+    text = element_text(size = 22),
+    plot.title = element_text(face = "bold"),
+    axis.title = element_text(face = "bold")
+  ) +
+  ggtitle("Experimental Dwell Time for Ads") +
+  xlab("Ad Type") +
+  ylab("Dwell Time (seconds)") +
+  stat_summary(aes(x = x_randomized, y = y_exp, fill = x_randomized),
+    fun = mean, colour = "yellow", geom = "point",
+    shape = 18, size = 5
+  )
+plot_grid(obs_dwell_time_boxplots, exp_dwell_time_boxplots)
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'fc45ece457699782bcc135bf58221007', 'grade': True, 'grade_id': 'cell-ca9f3d5691267384', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.12()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "a2053bb64ee6150ab2f4f68157fe2ec5", "grade": false, "grade_id": "cell-595ac4a8fbb0749a", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.13**
+<br>{points: 1}
+
+Using this new simulated dataset, estimate the linear regression of the experimental dwell time (`y_exp`) versus the assigned type of ad (`x_randomized`), and call it `exp_study_TikTok`. 
+
+Report the estimated coefficients, their standard errors, and corresponding $p$-values using `tidy()`. Include the corresponding asymptotic 95% confidence intervals. Store the results in the variable `exp_study_TikTok_results`.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '491d90159280e4b75dfeb925b33a2d28', 'grade': False, 'grade_id': 'cell-f923d756adb37082', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# exp_study_TikTok <- ...(...,
+#   ...
+# )
+# exp_study_TikTok
+
+# exp_study_TikTok_results <- ...(..., ...) %>% mutate_if(is.numeric, round, 2)
+# exp_study_TikTok_results
+
+# your code here
+exp_study_TikTok <- lm(y_exp ~ x_randomized,
+  data = sample_TikTok
+)
+exp_study_TikTok
+
+exp_study_TikTok_results <- tidy(exp_study_TikTok, conf.int = 0.95) %>% mutate_if(is.numeric, round, 2)
+exp_study_TikTok_results
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'f9d5d61deb36ce0f888d67827076c447', 'grade': True, 'grade_id': 'cell-46607a1514f84e66', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.13()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "fe7a30e0e3dd860b199808a6606ad6b8", "grade": false, "grade_id": "cell-c3300f2c4dc917e9", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.14**
+<br>{points: 1}
+
+Based on your output in `exp_study_TikTok_results`, coming from the experimental study, what can we conclude on the estimation of the population effect of the new ad?
+
+
+**A.** The estimated effect in dwell time when switching from the new to the current ad increases by 8.02 seconds. A randomized experiment provides an accurate effect estimate without including additional variables in the model.
+
+**B.** The estimated effect in dwell time when switching from the current to the new ad increases by 8.02 seconds. A randomized experiment provides an accurate effect estimate without including additional variables in the model.
+
+**C.** The estimated effect in dwell time when switching from the new to the current ad increases by 8.02 seconds. The effect is largely overestimated in this analysis.
+
+**D.** The estimated effect in dwell time when switching from the current to the new ad increases by 8.02 seconds. The effect is largely underestimated in this analysis.
+
+*Assign your answer to an object called `answer2.14`. Your answer should be one of `"A"`, `"B"`, `"C"`, or `"D"` surrounded by quotes.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '7641e1bb8948eca032db8189d44e6069', 'grade': False, 'grade_id': 'cell-85955fa085fa14de', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# answer2.14 <- 
+
+# your code here
+answer2.14 <- "B"
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '5e465406043701f27c5ef0f9421e46b4', 'grade': True, 'grade_id': 'cell-f9a10cd9fe8855a5', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.14()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "369bea25aa1bd5215a0445cd5d08a45e", "grade": false, "grade_id": "cell-3c057749a9ffc1b6", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.15**
+<br>{points: 1}
+
+Make a summary (it can be bullet points) of what you have learned from the simulation study in Section 2
+<!-- #endregion -->
+
+<!-- #region deletable=false nbgrader={"cell_type": "markdown", "checksum": "1fed3375928667f758525ae36cca1eaa", "grade": true, "grade_id": "cell-745fe821d504f253", "locked": false, "points": 1, "schema_version": 3, "solution": true, "task": false} -->
+> *Your answer goes here.*
+
+*   It's important in statistical inference and data analysis to consider all possible confounding variables.
+*   The simulation demonstrated that regression results based solely on treatment time can be confounded if variables are omitted.
+*   The process of model reduction of multicollinearity and improve model interpretability by removing variables with VIF
+*   The role of confounding variables in causal inference and how they can be biased from the results of a study if not properly accounted for
+*   The importance of model diagnostics and validation to ensure that the assumptions of the regression model are met
+<!-- #endregion -->
+
+```{r}
+
+```

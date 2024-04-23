@@ -1,0 +1,636 @@
+---
+jupyter:
+  jupytext:
+    formats: ipynb,Rmd
+    text_representation:
+      extension: .Rmd
+      format_name: rmarkdown
+      format_version: '1.2'
+      jupytext_version: 1.16.0
+  kernelspec:
+    display_name: R
+    language: R
+    name: ir
+---
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "f97f65e4d6b4c1d4d999d0c2ae225fc5", "grade": false, "grade_id": "cell-f1e1d845873036f4", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+# Tutorial 4: MLR with different types of input variables
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "1c57f899f006691c0cb0f40be06bb51e", "grade": false, "grade_id": "cell-82d9926086d47a80", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+#### Lecture and Tutorial Learning Goals:
+After completing this week's lecture and tutorial work, you will be able to:
+
+1. Give an example of a real problem that that could be answered by a multiple linear regression.
+2. Interpret the coefficients and $p$-values of different types of input variables, including categorical input variables.
+3. Define interactions in the context of linear regression.
+4. Write a computer script to perform linear regression when input variables are continuous or discrete, and when there are interactions between some of these variables.
+<!-- #endregion -->
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '7fc505b9da3ba24a646a8a35b69f517d', 'grade': False, 'grade_id': 'cell-a2a153352bc44a68', 'locked': True, 'schema_version': 3, 'solution': False, 'task': False}}
+# Run this cell before continuing.
+library(tidyverse)
+library(repr)
+library(infer)
+library(cowplot)
+library(broom)
+library(AER)
+source("tests_tutorial_04.R")
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "ef63ebcfe8716aad38a2bf893e613b02", "grade": false, "grade_id": "cell-9be71f65643c5906", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+## The data
+
+In this tutorial, we will continue using the `CASchools` real world dataset from 420 K-6 and K-8 districts in California. The California School data set comes with an R package called `AER`, an acronym for Applied Econometrics with R (by Christian Kleiber & Zeileis, 2017). 
+
+The dataset contains data on test performance, school characteristics and student demographic backgrounds for school districts in California. Among many variables available we will use the following:
+
+- `grades`: factor indicating grade span of district.
+
+- `income`: District average income (in USD 1,000).
+
+- `english`: Percent of English learners.
+
+- `read`: Average reading score.
+
+<!-- #endregion -->
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'e46acff06f2da23622a95dcad738046c', 'grade': False, 'grade_id': 'cell-751a3a4db77146a7', 'locked': True, 'schema_version': 3, 'solution': False, 'task': False}}
+#run this cell
+
+data(CASchools)
+
+caschools <- CASchools %>%
+  select(grades, income, english, read) %>%
+  mutate_if(is.numeric, round, 2)
+
+head(caschools)
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "491d42046529205e254c52113200e55a", "grade": false, "grade_id": "cell-3dfb99accf2154a8", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+#### Important: Note that if the categorical variable is not a factor, `lm` won't create a dummy variable!! 
+
+> Make sure that categorical variables in your model are factors. If they are not, then **set them as factors**!!
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "f058fbba73a9a4936f333e50270d5d74", "grade": false, "grade_id": "cell-a7382e79e72c9703", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+## 1. MLR: additive
+
+As discussed in the lecture, R will create dummy variables to include categorical variables in the model. In this example, `grades` is a categorical variable with 2 levels. 
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "9367815b59f44875ddc3b3cedffd41a2", "grade": false, "grade_id": "cell-18576173209dcbfe", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.0**
+<br>{points: 1}
+
+Since the input variable `grades` is a discrete and nominal variable with 2 levels, KK-06 and KK-08. Since this variable is a factor in the dataset, `lm` selects one level as a baseline to create a dummy variable. Which level of `grades` is selected, by default, as a baseline?
+
+**A.** `KK-06`
+
+**B.** `KK-08`
+
+*Assign your answer to an object called `answer1.0`. Your answer should be one of `"A"` or `"B"` surrounded by quotes.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'cd4bd2ff4058b85570033044f5e731a9', 'grade': False, 'grade_id': 'cell-f073f90a4398375f', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# answer1.0 <- ...
+
+# your code here
+answer1.0 <- "A"
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'd6f3723f0f8ef72f8cbfa6906e42b426', 'grade': True, 'grade_id': 'cell-b6ce784a5466648d', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_1.0()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "dc00d710ccdb843088fd0cd32e7120bc", "grade": false, "grade_id": "cell-3e16a0eb1d1251a6", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.1**
+<br>{points: 1}
+
+How many dummy variables does `lm` create to fit a linear regression with the categorical variable `grades`?
+
+**A.** 1
+
+**B.** 2
+
+**C.** 3
+
+**D.** 4
+
+*Assign your answer to an object called `answer1.1`. Your answer should be one of `"A"`, `"B"`, `"C"`, or `"D"` surrounded by quotes.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'c3a74807a9fd10b0a98bf7040df5d7ca', 'grade': False, 'grade_id': 'cell-49fd43204dbbbe64', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# answer1.1 <- 
+
+# your code here
+answer1.1 <- "A"
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'aab29ab12d9f21578b4e0bb9fb243b26', 'grade': True, 'grade_id': 'cell-8a6966bb42e5995c', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_1.1()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "accc4ebe5b88ec809ed324f02192458c", "grade": false, "grade_id": "cell-75a9578496bd6d9c", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.2**
+<br>{points: 1}
+
+In the previous tutorial, you used a simple linear regression (SLR) to study the relation between `read` and `income`, on average for all type of schools. Suppose you want to examine if there is any difference in this relation depending on the grade span of the school (i.e.,KK-06 vs KK-08). 
+
+If for all types of school (i.e., for all levels of `grades`) you expect the same change in reading score per unit change in the average income, which MLR will you fit in `R` using the `lm` function?
+
+**A.** `lm(read ~ income + grades, data = caschools)`
+
+**B.** `lm(read ~ income * grades, data = caschools)`
+
+*Assign your answer to an object called `answer1.2`. Your answer should be one of `"A"` or `"B"` surrounded by quotes.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'e97fed2fc79c181b9447e6caafaa4b18', 'grade': False, 'grade_id': 'cell-f6b2d0e8025cf80e', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# answer1.2 <- 
+
+# your code here
+answer1.2 <- "A"
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'd810fcc6f81a8afc5987ec10316adfb0', 'grade': True, 'grade_id': 'cell-645245eaf0a415b6', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_1.2()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "12af6ed36232289caa83e3518b468b98", "grade": false, "grade_id": "cell-37a0395078a18c50", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.3**
+<br>{points: 1}
+
+Which of the following descriptions will best describe a visualization of the MLR considered in **Question 1.2**? 
+
+**A.** one line through a cloud of data points
+
+**B.** two lines with equal slopes but different intercepts
+
+**C.** two lines with different slopes and different intercepts
+
+**D.** a smooth concave curve through a cloud of data points
+
+**E.** two boxplots for different levels of `grades`
+
+*Assign your answer to an object called `answer1.3`. Your answer should be one of `"A"`, `"B"`, `"C"`, `"D"`, or `"E"` surrounded by quotes.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'a44f499620bcd84405a2c6bd2a8a9d73', 'grade': False, 'grade_id': 'cell-fd274734aed6b6c7', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# answer1.3 <- 
+
+# your code here
+answer1.3 <- "B"
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '35393769c0469b8c86febb09350aee54', 'grade': True, 'grade_id': 'cell-905c24ed72606cd0', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_1.3()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "b0960d461c3ee4f2a8374e801249aa6e", "grade": false, "grade_id": "cell-e905a3e604e8750e", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.4**
+<br>{points: 1}
+
+Using `caschools`, estimate the MLR proposed in **Question 1.2** and called it `caschools_MLR_add`.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '50c8eb2ff60b12ebb21f9c86ca8d4190', 'grade': False, 'grade_id': 'cell-537a5de8c45b73fd', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# caschools_MLR_add <- ...(...,
+#   ...
+# )
+# caschools_MLR_add
+
+# your code here
+caschools_MLR_add <- lm(read ~ income + grades, data = caschools)
+caschools_MLR_add
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '1024a6c0ac471806ff34ea856ddcbc0a', 'grade': True, 'grade_id': 'cell-c955967bb20ade73', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_1.4.0()
+test_1.4.1()
+test_1.4.2()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "1b032d1a200038ebfb0c9418863f77a5", "grade": false, "grade_id": "cell-8a3de76c80df5397", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.5**
+<br>{points: 1}
+
+Create a plot of the data in `caschools` (using `geom_point()`) along with the estimated regression lines coming from the additive regression model `caschools_MLR_add`. Use different colours for the points and regression lines of each type of school (levels of `grades`). Include a legend indicating what colour corresponds to each level with proper axis labels. The `ggplot()` object's name will be `caschools_MLR_add_plot`.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '3a291e10325632cc6dbe54e29fbd0a5b', 'grade': False, 'grade_id': 'cell-9dcae296b8566967', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+options(repr.plot.width = 15, repr.plot.height = 7) # Adjust these numbers so the plot looks good in your desktop.
+
+# caschools$pred_MLR_Add <- predict(caschools_MLR_add) # Using predict() to create estimated regression lines.
+
+# caschools_MLR_add_plot <- ggplot(..., aes(
+#   ...,
+#   ...,
+#   color = ...
+# )) +
+#   ...() +
+#   geom_line(aes(y = pred_MLR_Add), size = 1) +
+#   labs(
+#     title = ...,
+#     x = ...,
+#     y = ...
+#   ) +
+#   theme(
+#     text = element_text(size = 16.5),
+#     plot.title = element_text(face = "bold"),
+#     axis.title = element_text(face = "bold"),
+#     legend.title = element_text(face = "bold"),
+#   ) +
+#   labs(color = "grades")
+# caschools_MLR_add_plot
+
+# your code here
+caschools$pred_MLR_Add <- predict(caschools_MLR_add) # Using predict() to create estimated regression lines.
+
+caschools_MLR_add_plot <- ggplot(caschools, aes(
+  income,
+  read,
+  color = grades
+)) +
+  geom_point() +
+  geom_line(aes(y = pred_MLR_Add), size = 1) +
+  labs(
+    title = "Relationship between Income and Rate by Grades",
+    x = "Income",
+    y = "Read"
+  ) +
+  theme(
+    text = element_text(size = 16.5),
+    plot.title = element_text(face = "bold"),
+    axis.title = element_text(face = "bold"),
+    legend.title = element_text(face = "bold"),
+  ) +
+  labs(color = "grades")
+caschools_MLR_add_plot
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '125d765392989a6f948357a6cc048d01', 'grade': True, 'grade_id': 'cell-60b4784943979e31', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_1.5()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "806f32d510d22cb6fee3cde12b870e5f", "grade": false, "grade_id": "cell-5a6b3d5e566adacc", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.6**
+<br>{points: 1}
+
+Find the estimated coefficients of `caschools_MLR_add` using `tidy()`. Report the estimated coefficients, their standard errors and corresponding $p$-values. Include the corresponding asymptotic **90% confidence intervals**. Store the results in the variable `caschools_MLR_add_results`.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'd35aa6dc891e12999af8ebac83a3f01d', 'grade': False, 'grade_id': 'cell-253df594cc213305', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# caschools_MLR_add_results <- ...(..., ..., ....) %>% mutate_if(is.numeric, round, 2)
+# caschools_MLR_add_results
+
+# your code here
+caschools_MLR_add_results <- tidy(caschools_MLR_add, conf.int = TRUE, conf.level = 0.90) %>% mutate_if(is.numeric, round, 2)
+caschools_MLR_add_results
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '182cc3fee5a4319bbefb8dee3139a641', 'grade': True, 'grade_id': 'cell-2e20842d0ef2e18c', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_1.6()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "99fa41618949973ba0ef9a3898cfcdac", "grade": false, "grade_id": "cell-045d79b6d3e4e227", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.7**
+<br>{points: 1}
+
+Using the results in `caschools_MLR_add_results` from **Question 1.6**, how would you interpret the estimated coefficient of the continuous variable `income` ?
+<!-- #endregion -->
+
+<!-- #region deletable=false nbgrader={"cell_type": "markdown", "checksum": "885cf006afa42b04df3d244c08372d30", "grade": true, "grade_id": "cell-c4f0c10f52097476", "locked": false, "points": 1, "schema_version": 3, "solution": true, "task": false} -->
+> *Your answer goes here.*
+
+The estimated coefficient for the income variable is 1.93. This means the average reading score is expected to increase by 1.93 units for every $1,000 increase in district average income,. This coefficient is statistically significant (because value of p-value is 0), suggesting a strong positive association between income and average reading scores in schools.
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "29524df0c431f38b0c86393221e632ae", "grade": false, "grade_id": "cell-2c547503213abacd", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.8**
+<br>{points: 1}
+
+Using a **significance level $\alpha = 0.10$**, which of the following claims are correct?
+
+
+**A.** for any average income, the expected reading score is the same for schools with KK-06 and schools with KK-08 grades. 
+
+**B.** there is enough evidence to reject the hypothesis that, for any average income, the expected reading score is the same for schools with KK-06 and schools with KK-08 grades.
+
+**C.** for any type of school, the change in `read` per unit change in `income` is statistically significant.
+
+**D.** there is enough evidence to believe that the association between `income` and `read` varies depending on the grade span of the school.
+
+
+*Assign your answers to the object `answer1.8`. Your answers have to be included in a single string indicating the correct options **in alphabetical order** and surrounded by quotes (e.g., `"ABCD"` indicates you are selecting the four options).*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'e77708faa194004e77f8a89d1d0fa38c', 'grade': False, 'grade_id': 'cell-7ded1cd632f3869e', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# answer1.8 <- 
+
+# your code here
+answer1.8 <- "C"
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '041fdc33a657af0a6e2e3f9dbd1d9fb7', 'grade': True, 'grade_id': 'cell-51e7b8a61bab24c9', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_1.8()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "66e67b9204bf0f10fb51ab869301f118", "grade": false, "grade_id": "cell-e9994b034ba662aa", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.9**
+<br>{points: 1}
+
+In one or two sentence explain what "statistically significant" mean in the following sentence and how it is different from "practical significant".
+
+> "for any type of school, the change in `read` per unit change in `income` is statistically significant"
+
+<!-- #endregion -->
+
+<!-- #region deletable=false nbgrader={"cell_type": "markdown", "checksum": "a810e419b66aa68785aac7a6f64b97e0", "grade": true, "grade_id": "cell-66c583a8d25d2564", "locked": false, "points": 1, "schema_version": 3, "solution": true, "task": false} -->
+> *Your answer goes here.*
+
+"Statistically significant" means that the observed test statistic has a very low probability of occurring by chance. It is used when the p-value obtained from statistical hypothesis testing is below a significance level (for example, 0.05 or 0.01). On the other hand, "practically significant" refers to the importance of the result in the context of the research or real-world application. 
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "2a9dc9062fbfdf7e4d6b107eacc71562", "grade": false, "grade_id": "cell-873ce5c231e18f2c", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+## 2. MLR: with interactions
+
+In this section we will explore if the relation between `read` and `income` is the same for all types of schools. We can do this using **interactions** between the input variables!
+
+> **Note** that interactions can be used, in general, when the relation between an input and the response depends on another input variable (not necessarily categorical!)
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "4fa6f32f5ed0f62df4758f88422b5fcd", "grade": false, "grade_id": "cell-004da4c289bb7b52", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.0**
+<br>{points: 1}
+
+We can use `lm` to fit the MLR with interactions between the continuous variable `income` and the categorical variable `grades` (with 2 levels) defined above.
+
+How many regression coefficients will be estimated by `lm`?
+
+**A.** 1
+
+**B.** 2
+
+**C.** 3
+
+**D.** 4
+
+
+*Assign your answer to an object called `answer2.0`. Your answer should be one of `"A"`, `"B"`, `"C"`, `"D"`, `"E"`, or `"F"` surrounded by quotes.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'c879ea7b9e4c78544e35bad40039dbff', 'grade': False, 'grade_id': 'cell-598588b1701bd38d', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# answer2.0 <- 
+
+# your code here
+answer2.0 <- "D"
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '7392fce520cd1b366107f36865b48507', 'grade': True, 'grade_id': 'cell-632b241ba713f5aa', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.0()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "38550478a20bfdac1e3007e1eeaa8707", "grade": false, "grade_id": "cell-d67f4a30fbd6b249", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.1**
+<br>{points: 1}
+
+Using `caschools`, estimate the MLR with interaction described above and called it `caschools_MLR_int`.
+
+> **Hint:** Interaction terms can be easily specified in `lm()` using the notation `*`.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '3f7cd83f01098924b263228b29661d5e', 'grade': False, 'grade_id': 'cell-d99a7bc9a1759fac', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# caschools_MLR_int <- ...(...,
+#   ...
+# )
+# caschools_MLR_int
+
+# your code here
+caschools_MLR_int <- lm(read ~ income * grades,
+  data = caschools
+)
+caschools_MLR_int
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '2fdb37752dd73b167cb7c10e09747df9', 'grade': True, 'grade_id': 'cell-a2d3def81c3ee729', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.1.0()
+test_2.1.1()
+test_2.1.2()
+test_2.1.3()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "cf9923865860d6e214047d8d307a97e2", "grade": false, "grade_id": "cell-1fc6d7f5ba4c6352", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.2**
+<br>{points: 1}
+
+Create a plot of the data in `caschools` (using `geom_point()`) along with the estimated regression lines coming from the interaction regression model `caschools_MLR_int` (note that your plot should have two regression lines, one for each `grades`). Use different colours for the points and regression lines of each type of school (levels of `grades`). Include a legend indicating what colour corresponds to each level with proper axis labels. The `ggplot()` object's name will be `caschools_MLR_int_plot`.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'f174d5a9cf49023348e6d142454b81c4', 'grade': False, 'grade_id': 'cell-0264d31dfcee946e', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# caschools$pred_MLR_int <- predict(caschools_MLR_int) # Using predict() to create estimated regression lines.
+
+# caschools_MLR_int_plot <- ggplot(..., aes(
+#   ...,
+#   ...,
+#   color = ...
+# )) +
+#   ...() +
+#   geom_line(aes(y = pred_MLR_int), size = 1) +
+#   labs(
+#     title = ...,
+#     x = ...,
+#     y = ...
+#   ) +
+#   theme(
+#     text = element_text(size = 16.5),
+#     plot.title = element_text(face = "bold"),
+#     axis.title = element_text(face = "bold"),
+#     legend.title = element_text(face = "bold"),
+#   ) +
+#   labs(color = "grades")
+# caschools_MLR_int_plot
+
+# your code here
+caschools$pred_MLR_int <- predict(caschools_MLR_int) # Using predict() to create estimated regression lines.
+
+caschools_MLR_int_plot <- ggplot(caschools, aes(
+  income,
+  read,
+  color = grades
+)) +
+  geom_point() +
+  geom_line(aes(y = pred_MLR_int), size = 1) +
+  labs(
+    title = "Relationship between Income and Rate by Grades",
+    x = "Income",
+    y = "Read"
+  ) +
+  theme(
+    text = element_text(size = 16.5),
+    plot.title = element_text(face = "bold"),
+    axis.title = element_text(face = "bold"),
+    legend.title = element_text(face = "bold"),
+  ) +
+  labs(color = "grades")
+caschools_MLR_int_plot
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'a0895f6f2f13d7ce6a6805aa3ca750a7', 'grade': True, 'grade_id': 'cell-1de4883ebac641a7', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.2()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "766e5717f264eef3dd6af79a62b04deb", "grade": false, "grade_id": "cell-e850e2f516d793c9", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.3**
+<br>{points: 1}
+
+Find the estimated coefficients of `caschools_MLR_int` using `tidy()`. Report the estimated coefficients, their standard errors and corresponding $p$-values. Include the corresponding asymptotic 90% confidence intervals. Store the results in the variable `caschools_MLR_int_results`.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '41ef5655a7cbfe3e5ae00bdddcae0a2a', 'grade': False, 'grade_id': 'cell-b8a3711ac0aa9e78', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# caschools_MLR_int_results <- ...(..., ..., ....) %>% mutate_if(is.numeric, round, 2)
+# caschools_MLR_int_results
+
+# your code here
+caschools_MLR_int_results <- tidy(caschools_MLR_int, conf.int = TRUE, conf.level = 0.90) %>% mutate_if(is.numeric, round, 2)
+caschools_MLR_int_results
+
+
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '243d015f2afebda5db3917619f72d6fd', 'grade': True, 'grade_id': 'cell-db1c5162e30c84bd', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.3()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "08d7282803f182d6211ed4dbf302b04c", "grade": false, "grade_id": "cell-3867f871a7af4b28", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.4**
+<br>{points: 1}
+
+Using a **significance level $\alpha = 0.10$**, which of the following claims are correct?
+
+
+**A.** There is enough evidence to reject the hypothesis that, for any average income, the expected reading score is the same for schools with KK-06 and schools with KK-08 grades.
+
+**B.** For any type of school, the change in `read` per unit change in `income` is statistically significant.
+
+**C.** There is enough evidence to reject the hypothesis that the change in `read` per unit change in `income` is the same for schools with KK-06 and schools with KK-08 grades.
+
+**D.** There is not enough evidence to reject the hypothesis that the change in `read` per unit change in `income` is the same for schools with KK-06 and schools with KK-08 grades.
+
+**E.** For schools with KK-06 grade span, the change in `read` per unit change in `income` is statistically significant.
+
+*Assign your answers to the object `answer2.4`. Your answers have to be included in a single string indicating the correct options **in alphabetical order** and surrounded by quotes (e.g., `"ABCDEFG"` indicates you are selecting the seven options).*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'feef0f6cf6e41f07ab507be043fcd7fa', 'grade': False, 'grade_id': 'cell-8040936e931b0c26', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# answer2.4 <- 
+
+# your code here
+answer2.4 <- "DE"
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '3e0e9dc82c3cc0b9ec220187142156a4', 'grade': True, 'grade_id': 'cell-1873e4d29d602968', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.4()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "3f41bec2efe1206490c1b9db22847a4e", "grade": false, "grade_id": "cell-a4830b2233d003de", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.5**
+<br>{points: 1}
+
+A common practice is not to interpret coefficients that are not statistically significant, since what you observe is not significantly different from 0 and reflects just noise in the data. Alternatively, you can provide an interpretation but with the caveat that the result is not statistically significant.  
+
+Following the second approach, what would be a correct interpretation of estimated coefficient of the interaction term `income:gradesKK-08` from `caschools_MLR_int_results` in **Question 2.3**? (remember to comment on the significance of the result).
+<!-- #endregion -->
+
+<!-- #region deletable=false nbgrader={"cell_type": "markdown", "checksum": "af5ae4b1617c5eb5fa76f953cc7fc90d", "grade": true, "grade_id": "cell-94b5d3fd08f12a3f", "locked": false, "points": 1, "schema_version": 3, "solution": true, "task": false} -->
+> *Your answer goes here.*
+
+The estimated coefficient for the interaction term of -0.11 suggests that in schools with grades KK-08, the average reading score is expected to decrease by 0.11 units for every $1,000 increase in average income. However, with a p-value of 0.68, this interaction effect is not statistically significant at the 0.10 significance level.
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "fec03cccfbc7e114c21bfd7fceaf1439", "grade": false, "grade_id": "cell-ad8a6bbdaf066526", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.6**
+<br>{points: 1}
+
+Fit the following 3 models as indicated:
+
+**A.** a SLR with `read` as the response and `income` as the *only* input variable using only KK-06 schools in `caschools`. Use `tidy` to get estimated parameters and standard errors. Call the results `caschools_SLR_kk06_results`
+
+**B.** a SLR with `read` as the response and `income` as the *only* input variable using only KK-08 schools in `caschools`. Use `tidy` to get estimated parameters and standard errors. Call the results `caschools_SLR_kk08_results`
+
+**C.** a MLR with `read` as the response and `income` and `grades` as input variables, *including their interaction*, using `caschools`. Note that you already have the estimated parameters and standard errors in `caschools_MLR_int_results`. Uncomment the line to get the results again here.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '0162042f6abfbd87251fe0c24ba68add', 'grade': False, 'grade_id': 'cell-6e18beb71a4fb71f', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# caschools_SLR_kk06_results <- tidy(lm(... ~ ... , 
+#     data= subset(...,... == ...))) %>% mutate_if(is.numeric, round, 2)
+# caschools_SLR_kk06_results
+
+# caschools_SLR_kk08_results <- tidy(lm(... ~ ... , 
+#     data= subset(...,... == ...))) %>% mutate_if(is.numeric, round, 2)
+# caschools_SLR_kk08_results
+
+# caschools_MLR_int_results
+
+
+# your code here
+caschools_SLR_kk06_results <- tidy(lm(read ~ income , 
+    data= subset(caschools, grades == "KK-06"))) %>% mutate_if(is.numeric, round, 2)
+caschools_SLR_kk06_results
+
+caschools_SLR_kk08_results <- tidy(lm(read ~ income , 
+    data= subset(caschools, grades == "KK-08"))) %>% mutate_if(is.numeric, round, 2)
+caschools_SLR_kk08_results
+
+caschools_MLR_int_results
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '3588b0c0ddca3eaaa2cfe7eb68472928', 'grade': True, 'grade_id': 'cell-7211318468890365', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.6.0()
+test_2.6.1()
+test_2.6.2()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "7607e9621ddc4c26db6df310297f81dc", "grade": false, "grade_id": "cell-22795bb3ed88a300", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.7**
+<br>{points: 1}
+
+**2.7.0** Using the results from `caschools_SLR_kk06_results` and `caschools_MLR_int_results` in **Question 2.6**, explain why the estimated coefficients of `income` are the same in both models
+
+**2.7.1** Using the results from `caschools_SLR_kk08_results` and `caschools_MLR_int_results` in **Question 2.6**, explain why the estimated coefficients of `income` are *not* the same in both models. 
+
+**2.7.2** Explain why the estimated coefficients of `income` in `caschools_SLR_kk08_results` is *not* the same as that of `income:gradesKK-08` in `caschools_MLR_int_results` using the results from **Question 2.6**.
+<!-- #endregion -->
+
+<!-- #region deletable=false nbgrader={"cell_type": "markdown", "checksum": "8c6973a0f022fe93f2585f89c5365adb", "grade": true, "grade_id": "cell-1bc7a024f2ac0de4", "locked": false, "points": 1, "schema_version": 3, "solution": true, "task": false} -->
+> *Your answer goes here.*
+
+2.7.0 : 
+The estimated coefficients of income for the SLR models for both KK-06 schools and the MLR model are the same, both being 2.02. This indicates that as income increases, average reading scores increase, and this relationship is consistent of both model
+
+
+2.7.1 :
+The estimated coefficients of income for the SLR model for KK-08 schools and the MLR model differ(1.91 and -0.11). This indicates a difference in the effect of income on average reading scores between the two models. While the SLR model indicates a positive relationship between income increase and average reading score, the MLR model shows that when considering the interaction effect with gradesKK-08, this relationship is not statistically significant.
+
+2.7.2 :
+the estimated coefficient for income is 1.91 in the SLR model for KK-08 schools, but the estimated coefficient for income:gradesKK-08 is -0.11 in the MLR model for KK-08 schools. This implies that the effect of income is vary depending on the grade. However, it suggests that the interaction of income and grade is not statistically significant with a p-value of 0.68. Therefore, the effect of income on average reading scores in schools with grades KK-08 is not statistically significant.
+
+<!-- #endregion -->
+
+```{r}
+
+```

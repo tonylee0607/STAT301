@@ -1,0 +1,511 @@
+---
+jupyter:
+  jupytext:
+    formats: ipynb,Rmd
+    text_representation:
+      extension: .Rmd
+      format_name: rmarkdown
+      format_version: '1.2'
+      jupytext_version: 1.16.0
+  kernelspec:
+    display_name: R
+    language: R
+    name: ir
+---
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "a7d11e98092cd6ffd0b55bcc09235725", "grade": false, "grade_id": "cell-f1e1d845873036f4", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+# Tutorial 2: A/B Testing and principled peeking
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "d3087353c3938a93a70166f52bdaeece", "grade": false, "grade_id": "cell-82d9926086d47a80", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+## Learning Objectives
+
+After completing this week's worksheet and tutorial work, you will be able to:
+
+1. Discuss why the methods learned in past courses are not sufficient to answer the more complex research problems being posed in this course (in particular stopping an A/B test early).
+2. Explain sequential testing and principled peeking and how it can be used for early stopping of an experiment (e.g., A/B testing).
+3. Write a computer script to perform A/B testing optimization with and without using principled peeking.
+4. Discuss the tradeoff between stopping earlier and certainty of significance, and thereal world implications (e.g., what does the FDA require for early stopping of clinical trials versus Facebook ads optimization?).
+5. List other questions related to A/B testing optimization that may be relevant in a real data application (e.g., what features cause a Facebook ad to perform best?)
+<!-- #endregion -->
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'c7b523de4676b23894dba6b6a4710557', 'grade': False, 'grade_id': 'cell-a2a153352bc44a68', 'locked': True, 'schema_version': 3, 'solution': False, 'task': False}}
+# Run this cell before continuing.
+library(tidyverse)
+library(gsDesign)
+
+source("tests_tutorial_02.R")
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "47147eb690a367cac56f019736b247a0", "grade": false, "grade_id": "cell-0647a289e8c93c6e", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+## 1. Warm up questions
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "e91859697791998cedfd8d871142490f", "grade": false, "grade_id": "cell-016e99af9ac357da", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.0**
+<br>{points: 1}
+
+Sequential A/B testing is used to analyze only continuous variables. **True or False??**
+
+*Assign your answer to an object called answer1.0. Your answer should be either "true" or "false", surrounded by quotes.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '9ff78776eec3c949085483c7225bec0a', 'grade': False, 'grade_id': 'cell-4f765b97eddc4200', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+#answer1.0 <- 
+
+# your code here
+answer1.0 <- "false"
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '52fd489a854726c1b416ba6f9b73eb37', 'grade': True, 'grade_id': 'cell-444b4babc585c9ff', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_1.0()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "f3eba5dcff43cfca99bf4ca0ba64e349", "grade": false, "grade_id": "cell-ade4b5a0e3e3478d", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.1**
+<br>{points: 1}
+
+When performing sequential A/B testing, a power analysis is not required since the analyst will check the data before collecting all data. **True or False??**
+
+*Assign your answer to an object called answer1.1. Your answer should be either "true" or "false", surrounded by quotes.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'f82b6b57c12aee4d084e0ae48c6d14f9', 'grade': False, 'grade_id': 'cell-734fae2ecfda4719', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+#answer1.1 <- 
+
+# your code here
+answer1.1 <- "false"
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '299f29f594738c9608d92c55aa7a7462', 'grade': True, 'grade_id': 'cell-3a3f763f43ee517a', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_1.1()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "5433f06ef0245e398a9866e1ddbe2216", "grade": false, "grade_id": "cell-ca338da0504ad817", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 1.2**
+<br>{points: 1}
+
+In **full sequential designs**, the analyst performs an analysis after every new observation, sequentially. Would you recommend using a Bonferroni correction for **full sequential designs** of large experiments so that it can be stopped as soon as possible??
+
+*Briefly, justify your recommendation. Think of pros and cons of the correction for the experiment described.*
+<!-- #endregion -->
+
+<!-- #region deletable=false nbgrader={"cell_type": "markdown", "checksum": "dbb0388184f02b3e6209ef88ac6e76b0", "grade": true, "grade_id": "cell-d52f0c41674cca3b", "locked": false, "points": 1, "schema_version": 3, "solution": true, "task": false} -->
+The Bonferroni correction is typically used to adjust the probability of Type I errors, which occur when multiple statistical tests are conducted and the null hypothesis is incorrectly rejected. However, in full sequential designs where analysis is performed after each new observation, using a Bonferroni correction is not recommended.
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "f5e05eb95872332dc976640c78821b24", "grade": false, "grade_id": "cell-ad493deab495ffd1", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+## 2. Early peeking in A/B testing
+
+In worksheet_02, we studied by means of an A/A testing (i.e., the case where we know that there's no difference in the distributions from the groups) how peeking can inflate the probability of Type I Error. 
+
+In addition, we used different methods to implement principled peeking and early stopping rules in sequential A/B testing.
+
+- **Bonferroni's method** provides an adjustment to classical $p$-values (or equivalently the significance level or critical values) to control the type I error rate. 
+
+- **Pocock's method**, available in `gsDesign` offers a less conservative way of controlling the type I error rate in sequential testing with early stops.
+
+- These 2 methods used uniform boundaries (common critical values) for all interim tests.
+
+In this section, you will examine how the number of interim tests may affect the results and the boundary used. 
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "c5fe6a38bdaef0a54c1391366995c5b9", "grade": false, "grade_id": "cell-6fbbd797464475f3", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.0**
+<br>{points: 1}
+
+Use the package `gsDesign` to get critical values for the **Pocock's method** for the following experimental design:
+
+- one-sided test to compare two population means (recall that the package will implement $z$-tests which are similar to $t$-tests when sample size is large)
+
+- 20 sequential (interim) tests
+
+- A/A testing design, i.e., effect size = 0 
+
+- a significance level of $5\%$ 
+
+- a power of $80\%$
+
+Use examples in worksheet_02 to write the appropriate code and get the resulting critical values for the experiment described. 
+
+*Assign your final answer to an object called `crit_pocock_20`. Your solution should be a vector with 20 equal values.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '51cad3d3c22ae5df02f30760dc8a27b7', 'grade': False, 'grade_id': 'cell-291025e2bc8a15fe', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# Your code goes here. No skeleton code provided.
+
+# your code here
+design_pocock <- gsDesign(k = 20, #number of interim analysis planned
+                          test.type = 1, # for one-sided tests
+                          delta = 0, # default effect size
+                          alpha = 0.05, #type I error rate
+                          beta = 0.2, # type II error rate
+                          sfu = 'Pocock')
+
+crit_pocock_20 <- design_pocock$upper$bound
+crit_pocock_20
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '4eb42c8db1b71fe4b5fa51bb70d84290', 'grade': True, 'grade_id': 'cell-fadc6b4fa788f892', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.0()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "8fd62f3b7cb192116ece3f4fbd1469cd", "grade": false, "grade_id": "cell-a52d0000faa9a48e", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.1**
+<br>{points: 1}
+
+Repeat **Question 2.0** but this time get Pocock's critical values for an experimental design that will peek at the data 10 times (i.e., 10 sequential (interim) tests).
+
+*Write the appropriate code and assign your answer to an object called `crit_pocock_10`. Your solution should be a vector with 10 equal values.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '174e1bc568489a7ba9c0d4968677a879', 'grade': False, 'grade_id': 'cell-092b0878bb03c233', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# Your code goes here. No skeleton code provided.
+
+# your code here
+design_pocock <- gsDesign(k = 10, #number of interim analysis planned
+                          test.type = 1, # for one-sided tests
+                          delta = 0, # default effect size
+                          alpha = 0.05, #type I error rate
+                          beta = 0.2, # type II error rate
+                          sfu = 'Pocock')
+
+crit_pocock_10 <- design_pocock$upper$bound
+crit_pocock_10
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '122e8fc9681252987e5c0bbc5c4686a4', 'grade': True, 'grade_id': 'cell-8212cb6ebfa0c18c', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.1()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "f4125a8eb510bcbf5112893574ad9ea3", "grade": false, "grade_id": "cell-e44e65eabc8fb77e", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.2**
+<br>{points: 1}
+
+The Pocock's critical values obtained in **Question 2.0** and **Question 2.1** show that as the number of peeks (interim tests) increases, the critical values also increase. 
+
+Briefly, explain why.
+<!-- #endregion -->
+
+<!-- #region deletable=false nbgrader={"cell_type": "markdown", "checksum": "3e191ec1b2e77f6c9c8d871ea7b0f168", "grade": true, "grade_id": "cell-43cb68384dc3a6a4", "locked": false, "points": 1, "schema_version": 3, "solution": true, "task": false} -->
+The Pocock's critical values increase as the number of interim tests increases because each additional test in the sequence incrementally raises the probability of wrongly rejecting the null hypothesis. The Pocock method adjusts the critical values upward for each interim analysis to maintain the overall type I error rate across the full sequence of tests at the desired level.
+<!-- #endregion -->
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "6ed5030c36828ba7e4cceeb9dfdae211", "grade": false, "grade_id": "cell-d3c3fad9bdace6b7", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 2.3**
+<br>{points: 1}
+
+Suppose that another company decides to use the same test, the same significance level and also to peek 10 times. If the new company wants to increase the probability of finding a significance result when $H_0$ is false (i.e., have more power) and still control the type I error rate, which of the following strategies would you recommend:
+
+**A** Use the same Pocock's critical value as in **Question 2.1** to control the type I error and plan for a larger experiment (i.e., larger sample size)
+
+**B** Don't use the Pocock's method since it's too conservative. Just use raw $p$-values from the CLT sampling distribution.
+
+**C** Use a Bonferroni's correction
+
+**D** There is no way to increase the power of the test
+
+*Hint*: you can use code to design this new experiment
+
+*Assign your answer to an object called answer2.3. Your answer should be one of `"A"`, `"B"`, `"C"`, or `"D"` surrounded by quotes.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '677a843ff55b9b0479db413cbfcfae33', 'grade': False, 'grade_id': 'cell-523621d2299f5a90', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# answer2.3 <- 
+
+# your code here
+answer2.3 <- "A"
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'b0ecd99816a0d18161fede6ffe170358', 'grade': True, 'grade_id': 'cell-b2a0e2c82435b7b0', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_2.3()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "c2b747fdd6db95d6cd8fb8e0fa315e8e", "grade": false, "grade_id": "cell-793479bb1437c485", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+## 3. Principled peeking: O’Brien-Fleming method
+
+In this section, we will implement and examine another method, also available in `gsDesign`: the **O’Brien-Fleming method**
+
+Unlike previous methods covered in worksheet_02, the O’Brien-Fleming method uses *non-uniform* boundaries, which has conservative critical values for earlier interim analyses and less conservative values (closer to the unadjusted critical values) as more data are collected. 
+
+As in **Question 3.2.1 of worksheet_02** we will use the function `incremental_t_test` to generate and sequentially analyze data.
+
+In the next few exercises, we will plot the statistics of the sequential tests and add 4 type of boundaries:
+
+- the unadjusted critical values (black line)
+
+- the Bonferroni's adjusted critical values (blue line)
+
+- the Pocock critical values (red line)
+
+- the O'Brien-Fleming critical values (green line)
+
+*Run the following cell to get the function to simulate and analyze data of sequential A/B testing*
+<!-- #endregion -->
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'a7c929affeed65d04438d7bde654f39c', 'grade': False, 'grade_id': 'cell-10f6fb3783a7c482', 'locked': True, 'schema_version': 3, 'solution': False, 'task': False}}
+# Two-sample t-test with tracking sequential statistic and p-values by incremental sample sizes until getting to n.
+
+# @param n (numeric): Initially planned sample size for each group (for simplicity, n needs to be a multiple of sample_increase_step).
+# @param d_0 (numeric): effect size.
+# @param mean_current (numeric): Population mean for control variation.
+# @param sd_current (numeric): Population standard deviation for current variation.
+# @param sd_new (numeric): Population standard deviation for new variation.
+# @param sample_increase_step (numeric): Sample size increment.
+
+# @return p.value.df: A tibble that has 3 columns:
+# inc_sample_size, statistic, and p_value 
+
+incremental_t_test <- function(n, d_0, mean_current, sd_current, sd_new, sample_increase_step) {
+  sample_current <- rnorm(n, mean = mean_current, sd = sd_current)
+  sample_new <- rnorm(n, mean = mean_current + d_0, sd = sd_new)
+
+  p.value.df <- tibble(
+    inc_sample_size = rep(0, n / sample_increase_step),
+    statistic = rep(0, n / sample_increase_step),
+    p_value = rep(0, n / sample_increase_step)
+  )
+
+  current_sample_size <- sample_increase_step
+  
+  for (i in 1:nrow(p.value.df))
+  {
+    t_test_results <- t.test(sample_new[1:current_sample_size], sample_current[1:current_sample_size],
+      var.equal = TRUE,
+      alternative = "greater"                      
+    )
+    p.value.df[i, "statistic"] <- as_tibble(t_test_results$statistic)
+    p.value.df[i, "p_value"] <- as_tibble(t_test_results$p.value)
+    p.value.df[i, "inc_sample_size"] <- current_sample_size
+    current_sample_size <- current_sample_size + sample_increase_step
+  }
+
+  return(p.value.df)
+}
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "8de5d221c0db1034486a1379ba66ad86", "grade": false, "grade_id": "cell-948ee1a9d21f3c52", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 3.0**
+{points: 1}
+
+**A/A testing (cont.)**: as in worksheet_02, let's simulate data that reflects no difference in the population means (i.e., $H_0$ is true).
+
+In this question, analyze the data in batches of 100 experimental units per group until a total of $n = 1000$ per group is collected (i.e., plan for 10 sequential tests).
+  
+We will assume again that data of both groups is generated from a Normal distribution with a mean equal to \\$200 and a standard deviation equal to \\$50.
+
+Use the `incremental_t_test` function to conduct this experiment.
+
+*Save the result in an object called answer3.0. Your answer should be a tibble with three columns: `inc_sample_size`, `statistic`, and `p_value`.
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'd228b9862d5854ad77fff34f871eb4da', 'grade': False, 'grade_id': 'cell-efd291d0304d92e1', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+set.seed(25) # do not change this.
+
+#answer3.0 <- 
+#    incremental_t_test(n = ..., d_0 = ..., sample_increase_step = ..., mean_current = 200, sd_current = 50, sd_new = 50)
+
+# your code here
+answer3.0 <- 
+   incremental_t_test(n = 1000, d_0 = 0, sample_increase_step = 100, mean_current = 200, sd_current = 50, sd_new = 50)
+
+answer3.0
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'ecd1815ef2ec38c26519835b766321ca', 'grade': True, 'grade_id': 'cell-0c7efb1f62225434', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_3.0()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "eef09b5a45f1189846857f09595ea9a0", "grade": false, "grade_id": "cell-de29a136e111ae85", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 3.1**
+<br>{points: 1}
+
+Repeat **Question 2.0** but this time get O'Brien-Fleming's critical values for an experimental design that will peek at the data 10 times (i.e., 10 sequential (interim) tests).
+
+*Write the appropriate code and assign your answer to an object called `crit_of_10`. Your solution should be a vector with 10 numeric values.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '50f566a60d58ebc06f30775fdb55b3ef', 'grade': False, 'grade_id': 'cell-da06b64c53195124', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# Get critical values of the O'Brien-Fleming design!
+
+# Your code goes here. No skeleton code provided.
+
+# your code here
+design_pocock <- gsDesign(k = 10, #number of interim analysis planned
+                          test.type = 1, # for one-sided tests
+                          delta = 0, # default effect size
+                          alpha = 0.05, #type I error rate
+                          beta = 0.2, # type II error rate
+                          sfu = 'OF')
+
+crit_of_10 <- design_pocock$upper$bound
+crit_of_10
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'd0dac98f0627f8eb4ce9b73186cca231', 'grade': True, 'grade_id': 'cell-7577b94a1406d9b2', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_3.1()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "ba9f5bd38670e527581cb16364c2696f", "grade": false, "grade_id": "cell-2f896d20a801d8e7", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 3.2**
+<br>{points: 1}
+
+Using the data stored in `answer3.0`, plot the sequence of observed statistics for each interim analysis as a **line** with the incremental sample size on the $x$-axis and the value of the observed statistic on the $y$-axis. 
+
+Add 4 dashed lines that indicate the following 4 boundaries (critical values): 
+
+- a green line for the OF's critical values
+
+- a red line for the Pocock's critical values
+
+- a blue line for the Bonferroni's critical values
+
+- a black line for the unadjusted critical values
+
+The `ggplot()` object's name will be `sequential_stat`.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'e102fcbf9704f5b5c73c4e03758de5fa', 'grade': False, 'grade_id': 'cell-92328169e3d31d90', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+options(repr.plot.width = 15, repr.plot.height = 9) # Adjust these numbers so the plot looks good in your desktop.
+
+#crit_unadj <- qt(1 - ..., ...)
+#crit_bonferroni <- ...(1 - ..., ...)
+
+# your code here
+crit_unadj <- qt(1 - 1.96, 998)
+crit_bonferroni <- qt(1 - 0.0025, 998)
+
+sequential_stat <- 
+ answer3.0 %>%
+ ggplot() +
+ geom_line(aes(x = inc_sample_size, y = statistic)) +
+ geom_point(aes(x = inc_sample_size, y = statistic)) +
+
+ geom_line(aes(x = inc_sample_size, y = crit_of_10),colour = 3, linetype = "twodash")+
+ geom_point(aes(x = inc_sample_size, y = crit_of_10), colour = 3) +
+ geom_text(x=150, y=crit_of_10[1] + 0.15, size=6, label="O'Brien-Fleming",colour = 3) +
+
+ geom_hline(yintercept = crit_pocock_10, colour = "red", linetype = "twodash") +
+ geom_point(aes(x = inc_sample_size, y = crit_of_10), colour = "red") +
+ geom_text(x=150, y=crit_pocock_10 + 0.15, size=6, label="Pocock",colour = "red") +
+
+ geom_hline(yintercept = crit_bonferroni, colour = "blue", linetype = "twodash") +
+ geom_point(aes(x = inc_sample_size, y = rep(crit_bonferroni, 10)), colour = "blue") +
+ geom_text(x=150, y=crit_bonferroni + 0.15, size=6, label="Bonferroni",colour = "blue") +
+
+ geom_hline(yintercept = crit_unadj, linetype = "twodash") +
+ geom_point(aes(x = inc_sample_size, y = rep(crit_unadj, 10))) +
+ geom_text(x=150, y=crit_unadj + 0.15, size=6, label="Unadjusted") +
+ theme(
+   text = element_text(size = 18),
+   plot.title = element_text(face = "bold"),
+   axis.title = element_text(face = "bold")
+ ) +
+ ggtitle("Critical values in Sequential Designs") +
+ ylab("Statistic") +
+ xlab("Sample Size") +
+ coord_cartesian(ylim = c(-1, 6)) +
+ scale_y_continuous(breaks = seq(-1, 6, by = 0.5))
+
+sequential_stat
+
+
+```
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '43f96d155dfba9089e2ced87c7442d4e', 'grade': True, 'grade_id': 'cell-c4ec82e4b947c36a', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_3.2()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "b07cf76d55a6fc79ae366eec5777ae08", "grade": false, "grade_id": "cell-d1f712563b8b6a85", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 3.3**
+<br>{points: 1}
+
+Suppose that the generated data correspond to the political campaign experiment and that the organizers have decided to monitor the data every 100 visitors per website and stop the experiment earlier if there's evidence of a difference between the group means. 
+
+According to the data plotted in **Question 3.2**, is the following statement **True or False*?? 
+
+> The campaign organizers will not erroneously stop the experiment if they compare the observed statistics with any of the boundaries that control the type I error rate
+
+*Assign your answer to an object called `answer3.3`. Your answer should be either `"true"` or `"false"`, surrounded by quotes.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '1773fcca9f2574e4683a56f43ed30091', 'grade': False, 'grade_id': 'cell-cbdb916890270418', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+# answer3.3 <- 
+
+# your code here
+answer3.3 <- "true"
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'f4db2be48400f9ff193671ffc3a5399a', 'grade': True, 'grade_id': 'cell-c68fa6f64391c4e2', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_3.3()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "ffec72c72273779859b20f6b90dfe76d", "grade": false, "grade_id": "cell-df816ff9bb116e3f", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 3.4**
+
+To examine how the O'Brien-Fleming (OF) controls the type I error rate, the campaign organizers decided to: 
+
+- perform the **A/A testing** experiment 100 times 
+
+- count how many times they would wrongly reject $H_0$ with their strategy, and
+
+- compare it with the expected number of rejections given the significance level $\alpha = 0.05$
+
+Use the code below to run 100 experiments and then estimate the type I error rate for the OF method.
+
+Your answer will be a tibble with three columns: `n_rejections_OF`, `n_rejections_unadj`, and `expected_n_rejections`.
+
+These columns should contain: the number of wrong rejections among the 100 experiments for the OF and the classical methods (unadjusted), respectively, compared to the expected number of wrong rejections given the design.
+
+*Fill out those parts indicated with `...`, uncomment the corresponding code in the cell below, and run it.*
+<!-- #endregion -->
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'c2b2accd22b5ef863b62cd5e4bda74bc', 'grade': False, 'grade_id': 'cell-80ce1a82c6388796', 'locked': True, 'schema_version': 3, 'solution': False, 'task': False}}
+set.seed(120)
+
+### Run this before continuing
+multiple_times_sequential_tests <- 
+    tibble(experiment = 1:100) %>% 
+    mutate(seq_test = map(.x = experiment, 
+                          .f = function(x) incremental_t_test(n = 1000, d_0 = 0, sample_increase_step = 100, 
+                              mean_current = 200, sd_current = 50, sd_new = 50)))
+```
+
+```{r deletable=FALSE, nbgrader={'cell_type': 'code', 'checksum': 'a074b2f1c8d97f27cf479995b395d19c', 'grade': False, 'grade_id': 'cell-7e6502a2334285d4', 'locked': False, 'schema_version': 3, 'solution': True, 'task': False}}
+#answer3.4 <- multiple_times_sequential_tests %>% 
+#    mutate(reject_of = map_dbl(.x = seq_test, .f = function(x) sum(... ... ...) > 0),
+#           reject_unadj = map_dbl(.x = seq_test, .f = function(x) sum(... ... ...) >0)) %>%  
+#    summarise(n_rejections_OF = ...(reject_of),
+#              n_rejections_unadj = ...(reject_unadj),
+#              expected_n_rejections = ...)
+
+# your code here
+answer3.4 <- multiple_times_sequential_tests %>% 
+   mutate(reject_of = map_dbl(.x = seq_test, .f = function(x) sum(x$p_value < pt(crit_of_10, 1998, lower.tail = FALSE)) > 0),
+          reject_unadj = map_dbl(.x = seq_test, .f = function(x) sum(x$p_value < 0.05) >0)) %>%  
+   summarise(n_rejections_OF = sum(reject_of),
+             n_rejections_unadj = sum(reject_unadj),
+             expected_n_rejections = 100 * 0.05)
+answer3.4
+```
+
+```{r deletable=FALSE, editable=FALSE, nbgrader={'cell_type': 'code', 'checksum': '9775ac1cfd45aa58410f6384414a1a47', 'grade': True, 'grade_id': 'cell-065f7cddd3d93051', 'locked': True, 'points': 1, 'schema_version': 3, 'solution': False, 'task': False}}
+test_3.4()
+```
+
+<!-- #region deletable=false editable=false nbgrader={"cell_type": "markdown", "checksum": "6bd9e0ba95e40f6dcde8946857abc5ec", "grade": false, "grade_id": "cell-027ecb0d6c9f11ac", "locked": true, "schema_version": 3, "solution": false, "task": false} -->
+**Question 3.5**
+<br>{points: 1}
+
+Explain briefly the results obtained in **Question 3.4**.
+
+<!-- #endregion -->
+
+<!-- #region deletable=false nbgrader={"cell_type": "markdown", "checksum": "d20eacec1cd0c4a33592742545622c35", "grade": true, "grade_id": "cell-b9d8c96418c97fb1", "locked": false, "points": 1, "schema_version": 3, "solution": true, "task": false} -->
+With the strategy used by the unadjusted critical-value, the probability of Type I error is approximately 4 times higher than the specified one. However, using the O'Brien-Fleming method resulted in a number of rejections that matched the expected rejections. Based on this, it is evident that the O'Brien-Fleming method effectively controls the type I error rate across multiple interim analyses.
+<!-- #endregion -->
+
+```{r}
+
+```
